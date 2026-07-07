@@ -7,10 +7,15 @@ use Illuminate\Support\Facades\Cache;
 
 final class UploadPlanService
 {
-    private const int|float CHUNK_THRESHOLD = 100 * 1024 * 1024;
-    private const int|float CHUNK_SIZE = 16 * 1024 * 1024;
+    private const int ONE_MIB = 1024 * 1024;
+    private const int MULTIPART_THRESHOLD = 100 * self::ONE_MIB;
+    private const int MINIMUM_PART_SIZE = 5 * self::ONE_MIB;
+    private const int DEFAULT_PART_SIZE = 16 * self::ONE_MIB;
+    private const int MAX_PARTS = 10000;
+    private const int MAX_CONCURRENCY = 3;
+    private const int SIGNING_WINDOW = 10;
     private const int MAX_BATCH_FILES = 10;
-    private const int|float MAX_BATCH_BYTES = 100 * 1024 * 1024;
+    private const int MAX_BATCH_BYTES = 100 * self::ONE_MIB;
 
     public function makePlan(User $user, array $files, ?int $parentId): array
     {
@@ -30,34 +35,51 @@ final class UploadPlanService
         }
 
         $smallFiles = collect($files)
-            ->filter(fn ($file) => (int) $file['size'] < self::CHUNK_THRESHOLD)
+            ->filter(fn ($file) => (int) $file['size'] < self::MULTIPART_THRESHOLD)
             ->values();
 
-        $largeFiles = collect($files)
-            ->filter(fn ($file) => (int) $file['size'] >= self::CHUNK_THRESHOLD)
+        $multipartFiles = collect($files)
+            ->filter(fn ($file) => (int) $file['size'] >= self::MULTIPART_THRESHOLD)
             ->values();
 
         $plan = [
             'ok' => true,
             'upload_id' => (string) str()->uuid(),
-            'threshold_bytes' => self::CHUNK_THRESHOLD,
-            'chunk_size' => self::CHUNK_SIZE,
-            'max_concurrency' => 3,
+            'threshold_bytes' => self::MULTIPART_THRESHOLD,
+            'default_part_size' => self::DEFAULT_PART_SIZE,
+            'max_concurrency' => self::MAX_CONCURRENCY,
+            'signing_window' => self::SIGNING_WINDOW,
             'small_file_batches' => $this->makeSmallFileBatches($smallFiles),
-            'chunked_files' => $largeFiles->map(fn ($file) => [
-                'client_id' => $file['client_id'],
-                'upload_file_id' => (string) str()->uuid(),
-                'name' => $file['name'],
-                'size' => (int) $file['size'],
-                'total_chunks' => (int) ceil($file['size'] / self::CHUNK_SIZE),
-                'relative_path' => $file['relative_path'] ?? null,
-            ])->values(),
+            'multipart_files' => $multipartFiles->map(function ($file) {
+                $size = (int) $file['size'];
+                $partSize = $this->partSizeFor($size);
+
+                return [
+                    'client_id' => $file['client_id'],
+                    'upload_file_id' => (string) str()->uuid(),
+                    'name' => $file['name'],
+                    'size' => $size,
+                    'content_type' => $file['content_type'] ?? null,
+                    'last_modified' => $file['last_modified'] ?? null,
+                    'relative_path' => $file['relative_path'] ?? null,
+                    'part_size' => $partSize,
+                    'part_count' => (int) ceil($size / $partSize),
+                ];
+            })->values(),
             'errors' => [],
         ];
 
         Cache::put("upload-plan:{$user->id}:{$plan['upload_id']}", $plan, now()->addHours(2));
 
         return $plan;
+    }
+
+    private function partSizeFor(int $fileSize): int
+    {
+        $requiredPartSize = (int) ceil($fileSize / self::MAX_PARTS);
+        $partSize = max(self::MINIMUM_PART_SIZE, self::DEFAULT_PART_SIZE, $requiredPartSize);
+
+        return (int) ceil($partSize / self::ONE_MIB) * self::ONE_MIB;
     }
 
     private function makeSmallFileBatches($files): array

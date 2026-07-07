@@ -21,6 +21,8 @@ class UploadPlanRequest extends ParentIdBaseRequest
             'files.*.name' => ['required', 'string', 'max:1024'],
             'files.*.size' => ['required', 'integer', 'min:0'],
             'files.*.relative_path' => ['nullable', 'string', 'max:4096'],
+            'files.*.content_type' => ['nullable', 'string', 'max:255'],
+            'files.*.last_modified' => ['nullable', 'integer'],
         ]);
     }
 }
