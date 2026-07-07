@@ -10,6 +10,7 @@ import {
     FILE_UPLOAD_STARTED,
     showErrorNotification,
 } from '@/composables/event-bus';
+import upload from '@/actions/App/Http/Controllers/Upload';
 
 type Props = {
     variant?: 'header' | 'sidebar';
@@ -22,6 +23,8 @@ type UploadQueueItem = {
     name: string;
     size: number;
     relative_path: string;
+    content_type: string | null;
+    last_modified: number | null;
     status: 'queued' | 'planning' | 'uploading' | 'done' | 'failed';
     progress: number;
     error?: string;
@@ -89,16 +92,15 @@ async function uploadFiles(files: any) {
             await uploadInBatches({
                 uploadId: plan.upload_id,
                 batches: plan.small_file_batches,
-                uploadItems: uploadItems
-            })
+                uploadItems: uploadItems,
+            });
         }
 
         // Process any files that need chucking
-        if (plan.chunked_files.length > 0) {
+        if (plan.multipart_files.length > 0) {
             await uploadS3Files({
                 uploadId: plan.upload_id,
-                chunkSize: plan.chunk_size,
-                files: plan.chunked_files,
+                files: plan.multipart_files,
                 uploadItems,
             });
         }
@@ -118,20 +120,33 @@ function createUploadQueue(files: FileList | File[]): UploadQueueItem[] {
         name: file.name,
         size: file.size,
         relative_path: file.webkitRelativePath || '',
+        content_type: file.type || null,
+        last_modified: file.lastModified || null,
         status: 'queued',
         progress: 0,
     }));
 }
 
 async function planUpload(uploadItems: UploadQueueItem[]) {
-    const { data } = await axios.post('/api/uploads/plan', {
+       const { data } = await axios.post('/api/uploads/plan', {
         parent_id: currentFolderId.value,
-        files: uploadItems.map(({ client_id, name, size, relative_path }) => ({
-            client_id,
-            name,
-            size,
-            relative_path,
-        })),
+        files: uploadItems.map(
+            ({
+                client_id,
+                name,
+                size,
+                relative_path,
+                content_type,
+                last_modified,
+            }) => ({
+                client_id,
+                name,
+                size,
+                relative_path,
+                content_type,
+                last_modified,
+            }),
+        ),
     });
 
     return data;
@@ -234,29 +249,73 @@ async function uploadBatch({
     }
 }
 
-type UploadPlanChunkedFile = {
-    client_id: string;
+type UploadPlanMultipartFile = {
+     client_id: string;
     upload_file_id: string;
     name: string;
     size: number;
-    total_chunks: number;
+    content_type: string | null;
+    last_modified: number | null;
+    relative_path: string | null;
+    part_size: number;
+    part_count: number;
 };
 async function uploadS3Files({
     uploadId,
-    chunkSize,
     files,
     uploadItems,
 }: {
     uploadId: string;
-    chunkSize: number;
-    files: UploadPlanChunkedFile[];
+    files: UploadPlanMultipartFile[];
     uploadItems: UploadQueueItem[];
 }) {
     const itemByClientId = new Map(
         uploadItems.map((item) => [item.client_id, item]),
     );
 
-    console.log(uploadId, chunkSize, files, uploadItems, itemByClientId)
+    for (const plannedFile of files) {
+        const uploadItem = itemByClientId.get(plannedFile.client_id);
+
+        if (!uploadItem) {
+            throw new Error(
+                `Upload item not found for client_id: ${plannedFile.client_id}`,
+            );
+        }
+
+        uploadItem.status = 'uploading';
+
+        console.log('multipart upload planned', {
+            uploadId,
+            uploadFileId: plannedFile.upload_file_id,
+            file: uploadItem.file,
+            partSize: plannedFile.part_size,
+            partCount: plannedFile.part_count,
+        });
+
+        await uploadMultipartFile({
+            uploadId,
+            plannedFile,
+            uploadItem,
+        });
+    }
+}
+
+async function uploadMultipartFile({
+    uploadId,
+    plannedFile,
+    uploadItem,
+}: {
+    uploadId: string;
+    plannedFile: UploadPlanMultipartFile;
+    uploadItem: UploadQueueItem;
+}) {
+    console.log('multipart file upload not implemented yet', {
+        uploadId,
+        uploadFileId: plannedFile.upload_file_id,
+        file: uploadItem.file,
+        partSize: plannedFile.part_size,
+        partCount: plannedFile.part_count,
+    });
 }
 
 function handleError(error: any) {
