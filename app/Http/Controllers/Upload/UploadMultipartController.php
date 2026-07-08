@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Upload;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InitiateMultipartUploadRequest;
+use App\Http\Requests\SignMultipartUploadPartsRequest;
 use App\Services\UploadMultipartService;
 use Illuminate\Http\JsonResponse;
 
@@ -26,12 +27,20 @@ class UploadMultipartController extends Controller
         return response()->json($result['body'], $result['status']);
     }
 
-    public function sign(): JsonResponse
-    {
-        return response()->json([
-            'ok' => false,
-            'message' => 'Multipart part signing is not implemented yet.',
-        ], 501);
+    public function sign(
+        SignMultipartUploadPartsRequest $request,
+        UploadMultipartService $service,
+        string $uploadId,
+        string $uploadFileId,
+    ): JsonResponse {
+        $result = $service->signParts(
+            user: $request->user(),
+            uploadId: $uploadId,
+            uploadFileId: $uploadFileId,
+            partNumbers: $request->validated('parts')
+        );
+
+        return response()->json($result['body'], $result['status']);
     }
 
     public function complete(): JsonResponse

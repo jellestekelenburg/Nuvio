@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type {
     InitiatedMultipartUpload,
+    SignedMultipartPartsResponse,
     UploadPlanMultipartFile,
     UploadQueueItem,
 } from './types';
@@ -83,6 +84,27 @@ async function initiateMultipartUpload({
 
     if (!data.ok) {
         throw new Error(data.message ?? 'Multipart upload initiation failed.');
+    }
+
+    return data;
+}
+
+export async function signMultipartUploadParts({
+    uploadId,
+    uploadFileId,
+    parts,
+} : {
+    uploadId: string;
+    uploadFileId: string;
+    parts: number[];
+}) : Promise<SignedMultipartPartsResponse> {
+    const { data } = await axios.post(
+        `/api/uploads/${uploadId}/multipart/${uploadFileId}/parts/sign`,
+        { parts }
+    );
+
+    if (!data.ok) {
+        throw new Error(data.message ?? 'Multipart parts signing failed.')
     }
 
     return data;

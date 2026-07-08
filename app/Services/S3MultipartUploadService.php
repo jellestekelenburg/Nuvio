@@ -2,195 +2,69 @@
 
 namespace App\Services;
 
-use App\Models\File;
-use App\Models\MultipartUpload;
-use App\Models\User;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
+use Aws\S3\S3Client;
+use Illuminate\Filesystem\AwsS3V3Adapter;
+use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
-class UploadMultipartService
+final class S3MultipartUploadService
 {
-    public function __construct(
-        private readonly S3MultipartUploadService $s3MultipartUploadService,
-    ) {}
+    private S3Client $client;
+    private string $bucket;
 
-    public function initiate(
-        User $user,
-        string $uploadId,
-        string $uploadFileId,
-        ?int $parentId,
-    ): array {
-        $plan = Cache::get("upload-plan:{$user->id}:{$uploadId}");
+    public function __construct()
+    {
+        $disk = Storage::disk('s3');
 
-        if (! $plan) {
-            return $this->result([
-                'ok' => false,
-                'code' => 'upload_plan_not_found',
-                'message' => 'Upload plan not found or expired.',
-            ], 404);
+        if (! $disk instanceof AwsS3V3Adapter) {
+            throw new RuntimeException('The s3 disk must use the AWS S3 adapter.');
         }
 
-        $plannedFile = collect($plan['multipart_files'] ?? [])
-            ->firstWhere('upload_file_id', $uploadFileId);
+        $this->client = $disk->getClient();
+        $this->bucket = (string) config('filesystems.disks.s3.bucket');
 
-        if (! $plannedFile) {
-            return $this->result([
-                'ok' => false,
-                'code' => 'multipart_file_not_found',
-                'message' => 'Multipart file was not found in this upload plan.',
-            ], 404);
+        if ($this->bucket === '') {
+            throw new RuntimeException('Missing S3 Bucket configuration.');
+        }
+    }
+
+    public function createMultipartUpload(string $key, ?string $contentType, array $metadata = []): string
+    {
+        $args = [
+            'Bucket' => $this->bucket,
+            'Key' => $key,
+            'Metadata' => collect($metadata)
+            ->mapWithKeys(fn ($value, $key) => [(string) $key => (string) $value])
+            ->all(),
+        ];
+
+        if ($contentType) {
+            $args['ContentType'] = $contentType;
         }
 
-        $existingUpload = MultipartUpload::query()
-            ->where('user_id', $user->id)
-            ->where('upload_id', $uploadId)
-            ->where('upload_file_id', $uploadFileId)
-            ->first();
+        $result = $this->client->createMultipartUpload($args);
 
-        if ($existingUpload) {
-            if ($existingUpload->isActive()) {
-                return $this->result($this->uploadStateBody(
-                    upload: $existingUpload,
-                    plan: $plan,
-                ));
-            }
+        return (string) $result['UploadId'];
+    }
 
-            return $this->result([
-                'ok' => false,
-                'code' => 'multipart_upload_not_active',
-                'message' => 'This multipart upload can no longer be initiated.',
-            ], 409);
-        }
-
-        $user->refresh();
-
-        $size = (int) $plannedFile['size'];
-        $reservedBytes = $this->activeReservedBytes($user);
-        $remainingBytes = max(
-            0,
-            $user->getMaxStorageSize() - $user->getUsedStorageSize() - $reservedBytes,
-        );
-
-        if ($size > $remainingBytes) {
-            return $this->result([
-                'ok' => false,
-                'code' => 'storage_limit_exceeded',
-                'message' => 'You do not have enough storage for this multipart upload.',
-            ], 422);
-        }
-
-        $parent = $this->resolveParent($user, $parentId);
-        $s3Key = $this->makeS3Key($user, (string) $plannedFile['name']);
-
-        $s3UploadId = $this->s3MultipartUploadService->createMultipartUpload(
-            key: $s3Key,
-            contentType: $plannedFile['content_type'] ?? null,
-            metadata: [
-                'user_id' => $user->id,
-                'upload_id' => $uploadId,
-                'upload_file_id' => $uploadFileId,
-                'original_name_base64' => base64_encode((string) $plannedFile['name']),
-            ],
-        );
-
-        $upload = MultipartUpload::query()->create([
-            'upload_id' => $uploadId,
-            'upload_file_id' => $uploadFileId,
-            'user_id' => $user->id,
-            'parent_id' => $parent->id,
-            'client_id' => $plannedFile['client_id'],
-            'name' => $plannedFile['name'],
-            'relative_path' => $plannedFile['relative_path'] ?? null,
-            'content_type' => $plannedFile['content_type'] ?? null,
-            'size' => $size,
-            'part_size' => (int) $plannedFile['part_size'],
-            'part_count' => (int) $plannedFile['part_count'],
-            'reserved_bytes' => $size,
-            's3_key' => $s3Key,
-            's3_upload_id' => $s3UploadId,
-            'status' => MultipartUpload::STATUS_INITIATED,
-            'initiated_at' => now(),
+    public function presignUploadPart(
+        string $key,
+        string $s3UploadId,
+        int $partNumber,
+        int $expiresInSeconds = 900,
+    ): string {
+        $command = $this->client->getCommand('UploadPart', [
+            'Bucket' => $this->bucket,
+            'Key' => $key,
+            'UploadId' => $s3UploadId,
+            'PartNumber' => $partNumber
         ]);
 
-        return $this->result($this->uploadStateBody(
-            upload: $upload,
-            plan: $plan,
-        ), 201);
-    }
-
-    private function uploadStateBody(MultipartUpload $upload, array $plan): array
-    {
-        return [
-            'ok' => true,
-            'upload_id' => $upload->upload_id,
-            'upload_file_id' => $upload->upload_file_id,
-            'status' => $upload->status,
-            'part_size' => $upload->part_size,
-            'part_count' => $upload->part_count,
-            'max_concurrency' => (int) ($plan['max_concurrency'] ?? 3),
-            'signing_window' => (int) ($plan['signing_window'] ?? 10),
-        ];
-    }
-
-    private function activeReservedBytes(User $user): int
-    {
-        return (int) MultipartUpload::query()
-            ->where('user_id', $user->id)
-            ->whereIn('status', [
-                MultipartUpload::STATUS_INITIATED,
-                MultipartUpload::STATUS_UPLOADING,
-            ])
-            ->sum('reserved_bytes');
-    }
-
-    private function resolveParent(User $user, ?int $parentId): File
-    {
-        if ($parentId) {
-            return File::query()
-                ->where('id', $parentId)
-                ->where('created_by', $user->id)
-                ->where('is_folder', true)
-                ->firstOrFail();
-        }
-
-        return File::query()
-            ->where('created_by', $user->id)
-            ->whereIsRoot()
-            ->firstOrFail();
-    }
-
-    private function makeS3Key(User $user, string $originalName): string
-    {
-        return sprintf(
-            'files/%d/%s/%s/%s',
-            $user->id,
-            now()->format('Y/m'),
-            (string) str()->uuid(),
-            $this->safeFilename($originalName),
+        $request = $this->client->createPresignedRequest(
+            $command,
+            "+{$expiresInSeconds} seconds",
         );
-    }
 
-    private function safeFilename(string $name): string
-    {
-        $name = basename(str_replace('\\', '/', $name));
-        $extension = pathinfo($name, PATHINFO_EXTENSION);
-        $filename = pathinfo($name, PATHINFO_FILENAME);
-
-        $safeFilename = Str::slug($filename) ?: 'file';
-        $safeExtension = Str::slug($extension);
-
-        if (! $safeExtension) {
-            return $safeFilename;
-        }
-
-        return "{$safeFilename}.{$safeExtension}";
-    }
-
-    private function result(array $body, int $status = 200): array
-    {
-        return [
-            'body' => $body,
-            'status' => $status,
-        ];
+        return (string) $request->getUri();
     }
 }

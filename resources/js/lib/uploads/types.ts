@@ -69,3 +69,20 @@ export type InitiatedMultipartUpload = {
     max_concurrency: number;
     signing_window: number;
 };
+
+
+export type SignedMultipartPart = {
+    part_number: number;
+    url: string;
+    start: number;
+    end: number;
+}
+
+export type SignedMultipartPartsResponse = {
+    ok: true;
+    upload_id: string;
+    upload_file_id: string;
+    parts: SignedMultipartPart[];
+    expires_in: number;
+    expires_at: string;
+}
