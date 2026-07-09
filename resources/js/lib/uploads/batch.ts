@@ -7,6 +7,7 @@ type UploadBatchesOptions = {
     batches: UploadPlanBatch[];
     uploadItems: UploadQueueItem[];
     parentId: number | null;
+    onQueueUpdated?: (uploadItems: UploadQueueItem[]) => void;
 };
 
 export async function uploadInBatches({
@@ -14,6 +15,7 @@ export async function uploadInBatches({
     batches,
     uploadItems,
     parentId,
+    onQueueUpdated,
 }: UploadBatchesOptions) {
     const itemByClientId = new Map(
         uploadItems.map((item) => [item.client_id, item]),
@@ -25,6 +27,8 @@ export async function uploadInBatches({
             batch,
             itemByClientId,
             parentId,
+            uploadItems,
+            onQueueUpdated,
         });
     });
 }
@@ -34,11 +38,15 @@ async function uploadBatch({
     batch,
     itemByClientId,
     parentId,
+    uploadItems,
+    onQueueUpdated,
 }: {
     uploadId: string;
     batch: UploadPlanBatch;
     itemByClientId: Map<string, UploadQueueItem>;
     parentId: number | null;
+    uploadItems: UploadQueueItem[];
+    onQueueUpdated?: (uploadItems: UploadQueueItem[]) => void;
 }) {
     const form = new FormData();
 
@@ -54,6 +62,7 @@ async function uploadBatch({
         }
 
         item.status = 'uploading';
+        onQueueUpdated?.(uploadItems);
 
         form.append('files[]', item.file);
         form.append('client_ids[]', item.client_id);
@@ -75,6 +84,7 @@ async function uploadBatch({
         if (item) {
             item.status = 'done';
             item.progress = 100;
+            onQueueUpdated?.(uploadItems);
         }
     }
 }

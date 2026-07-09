@@ -8,14 +8,14 @@ use Illuminate\Support\Facades\Cache;
 final class UploadPlanService
 {
     private const int ONE_MIB = 1024 * 1024;
-    private const int MULTIPART_THRESHOLD = 100 * self::ONE_MIB;
+    private const int MULTIPART_THRESHOLD = 30 * self::ONE_MIB;
     private const int MINIMUM_PART_SIZE = 5 * self::ONE_MIB;
     private const int DEFAULT_PART_SIZE = 16 * self::ONE_MIB;
     private const int MAX_PARTS = 10000;
     private const int MAX_CONCURRENCY = 3;
     private const int SIGNING_WINDOW = 10;
     private const int MAX_BATCH_FILES = 10;
-    private const int MAX_BATCH_BYTES = 100 * self::ONE_MIB;
+    private const int MAX_BATCH_BYTES = 30 * self::ONE_MIB;
 
     public function makePlan(User $user, array $files, ?int $parentId): array
     {

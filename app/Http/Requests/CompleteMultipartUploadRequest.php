@@ -5,7 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class SignMultipartUploadPartsRequest extends FormRequest
+class CompleteMultipartUploadRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -23,8 +23,9 @@ class SignMultipartUploadPartsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'parts' => ['required', 'array', 'min:1', 'max:20'],
-            'parts.*' => ['required', 'integer', 'distinct', 'min:1'],
+            'parts' => ['required', 'array', 'min:1', 'max:10000'],
+            'parts.*.part_number' => ['required', 'integer', 'distinct', 'min:1'],
+            'parts.*.etag' => ['required', 'string', 'max:255'],
         ];
     }
 }

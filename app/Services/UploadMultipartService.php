@@ -6,15 +6,20 @@ use App\Models\File;
 use App\Models\MultipartUpload;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class UploadMultipartService
 {
     private const int SIGNED_PART_URL_TTL_SECONDS = 900;
+
     private const int MAX_SIGNED_PARTS_PER_REQUEST = 20;
 
     public function __construct(
         private readonly S3MultipartUploadService $s3MultipartUploadService,
+        private readonly RegisterStoredS3File $registerStoredS3File,
+        private readonly StorageUserService $storageUserService,
+        private readonly UploadTargetFolderResolver $targetFolderResolver,
     ) {}
 
     public function initiate(
@@ -138,7 +143,7 @@ class UploadMultipartService
                 'ok' => false,
                 'code' => 'multipart_upload_not_found',
                 'message' => 'Multipart upload was not found.',
-          ], 404);
+            ], 404);
         }
 
         if (! $upload->isActive()) {
@@ -161,7 +166,7 @@ class UploadMultipartService
             ], 422);
         }
 
-        $invalidPartNumber = $partNumbers->first (
+        $invalidPartNumber = $partNumbers->first(
             fn (int $partNumber) => $partNumber < 1 || $partNumber > $upload->part_count,
         );
 
@@ -201,6 +206,163 @@ class UploadMultipartService
             'parts' => $parts,
             'expires_in' => self::SIGNED_PART_URL_TTL_SECONDS,
             'expires_at' => now()->addSeconds(self::SIGNED_PART_URL_TTL_SECONDS)->toIso8601String(),
+        ]);
+    }
+
+    public function complete(
+        User $user,
+        string $uploadId,
+        string $uploadFileId,
+        array $parts,
+    ): array {
+        $upload = MultipartUpload::query()
+            ->where('user_id', $user->id)
+            ->where('upload_id', $uploadId)
+            ->where('upload_file_id', $uploadFileId)
+            ->first();
+
+        if (! $upload) {
+            return $this->result(['ok' => false, 'message' => 'Multipart upload was not found.'], 404);
+        }
+
+        $upload->loadMissing('completedFile');
+
+        if ($upload->status === MultipartUpload::STATUS_COMPLETED && $upload->completedFile) {
+            return $this->result([
+                'ok' => true,
+                'file' => $this->completedFileBody($upload),
+            ]);
+        }
+
+        if (! $upload->isActive()) {
+            return $this->result(['ok' => false, 'message' => 'This multipart upload can not be completed.'], 409);
+        }
+
+        $normalizedParts = collect($parts)
+            ->map(fn (array $part) => [
+                'part_number' => (int) $part['part_number'],
+                'etag' => trim((string) $part['etag']),
+            ])
+            ->sortBy('part_number')
+            ->values();
+
+        if ($normalizedParts->count() !== $upload->part_count) {
+            return $this->result(['ok' => false, 'message' => 'Not all parts were provided.'], 422);
+        }
+
+        $expectedPartNumbers = range(1, $upload->part_count);
+
+        if ($normalizedParts->pluck('part_number')->all() !== $expectedPartNumbers) {
+            return $this->result(['ok' => false, 'message' => 'Part numbers must exactly match the upload plan.'], 422);
+        }
+
+        $this->s3MultipartUploadService->completeMultiPartUpload(
+            key: $upload->s3_key,
+            s3UploadId: $upload->s3_upload_id,
+            parts: $normalizedParts->all(),
+        );
+
+        if ($this->s3MultipartUploadService->objectSize($upload->s3_key) !== $upload->size) {
+            $upload->forceFill(['status' => MultipartUpload::STATUS_FAILED])->save();
+
+            return $this->result(['ok' => false, 'message' => 'Completed S3 object size does not match the upload plan.'], 500);
+        }
+
+        $file = DB::transaction(function () use ($user, $upload) {
+            $rootParent = $this->resolveParent($user, $upload->parent_id);
+            $targetParent = $this->targetFolderResolver->resolve(
+                user: $user,
+                rootParent: $rootParent,
+                relativePath: $upload->relative_path,
+            );
+
+            $file = $this->registerStoredS3File->handle(
+                user: $user,
+                parent: $targetParent,
+                s3Key: $upload->s3_key,
+                name: $upload->name,
+                mime: $upload->content_type,
+                size: $upload->size,
+            );
+
+            $this->storageUserService->addUsage($user, $upload->size);
+
+            $upload->forceFill([
+                'status' => MultipartUpload::STATUS_COMPLETED,
+                'completed_file_id' => $file->id,
+                'reserved_bytes' => 0,
+                'completed_at' => now(),
+            ])->save();
+
+            return $file;
+        });
+
+        return $this->result([
+            'ok' => true,
+            'file' => [
+                'client_id' => $upload->client_id,
+                'file_id' => $file->id,
+                'name' => $file->name,
+                'size' => $file->size,
+                'status' => 'done',
+            ],
+        ]);
+    }
+
+    public function abort(
+        User $user,
+        string $uploadId,
+        string $uploadFileId,
+    ): array {
+        $upload = MultipartUpload::query()
+            ->where('user_id', $user->id)
+            ->where('upload_id', $uploadId)
+            ->where('upload_file_id', $uploadFileId)
+            ->first();
+
+        if (! $upload) {
+            return $this->result([
+                'ok' => false,
+                'code' => 'multipart_upload_not_found',
+                'message' => 'Multipart upload was not found.',
+            ], 404);
+        }
+
+        if ($upload->status === MultipartUpload::STATUS_COMPLETED) {
+            return $this->result([
+                'ok' => true,
+                'status' => $upload->status,
+            ]);
+        }
+
+        if ($upload->status === MultipartUpload::STATUS_ABORTED) {
+            return $this->result([
+                'ok' => true,
+                'status' => $upload->status,
+            ]);
+        }
+
+        if ($upload->status === MultipartUpload::STATUS_FAILED) {
+            return $this->result([
+                'ok' => true,
+                'status' => $upload->status,
+            ]);
+        }
+
+        $this->s3MultipartUploadService->abortMultipartUpload(
+            key: $upload->s3_key,
+            s3UploadId: $upload->s3_upload_id,
+        );
+
+        $upload->forceFill([
+            'status' => MultipartUpload::STATUS_ABORTED,
+            'reserved_bytes' => 0,
+            'aborted_at' => now(),
+        ])->save();
+
+        return $this->result([
+            'ok' => true,
+            'status' => $upload->status,
         ]);
     }
 
@@ -277,6 +439,17 @@ class UploadMultipartService
         return [
             'body' => $body,
             'status' => $status,
+        ];
+    }
+
+    private function completedFileBody(MultipartUpload $upload): array
+    {
+        return [
+            'client_id' => $upload->client_id,
+            'file_id' => $upload->completedFile->id,
+            'name' => $upload->completedFile->name,
+            'size' => $upload->completedFile->size,
+            'status' => 'done',
         ];
     }
 }

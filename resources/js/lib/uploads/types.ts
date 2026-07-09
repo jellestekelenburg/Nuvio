@@ -86,3 +86,8 @@ export type SignedMultipartPartsResponse = {
     expires_in: number;
     expires_at: string;
 }
+
+export type CompletedMultipartPart = {
+    part_number: number;
+    etag: string;
+}

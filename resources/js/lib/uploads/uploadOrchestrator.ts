@@ -8,18 +8,24 @@ type UploadSelectionOptions = {
     files: FileList | File[];
     parentId: number | null;
     onQueueCreated?: (uploadItems: UploadQueueItem[]) => void;
+    onQueueUpdated?: (uploadItems: UploadQueueItem[]) => void;
+    onPlanCreated?: (plan: Awaited<ReturnType<typeof planUpload>>) => void;
 };
 
 export async function uploadSelection({
     files,
     parentId,
     onQueueCreated,
+    onQueueUpdated,
+    onPlanCreated,
 }: UploadSelectionOptions) {
     const uploadItems = createUploadQueue(files);
 
     onQueueCreated?.(uploadItems);
+    onQueueUpdated?.(uploadItems);
 
     const plan = await planUpload(parentId, uploadItems);
+    onPlanCreated?.(plan);
 
     if (!plan.ok) {
         throw new Error(plan.errors?.[0]?.message ?? plan.message);
@@ -31,6 +37,7 @@ export async function uploadSelection({
             batches: plan.small_file_batches,
             uploadItems,
             parentId,
+            onQueueUpdated,
         });
     }
 
@@ -40,6 +47,14 @@ export async function uploadSelection({
             files: plan.multipart_files,
             uploadItems,
             parentId,
+            onQueueUpdated,
         });
     }
+
+    onQueueUpdated?.(uploadItems);
+
+    return {
+        plan,
+        uploadItems,
+    };
 }

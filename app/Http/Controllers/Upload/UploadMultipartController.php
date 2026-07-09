@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers\Upload;
 
-
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AbortMultipartUploadRequest;
+use App\Http\Requests\CompleteMultipartUploadRequest;
 use App\Http\Requests\InitiateMultipartUploadRequest;
 use App\Http\Requests\SignMultipartUploadPartsRequest;
 use App\Services\UploadMultipartService;
@@ -43,19 +44,34 @@ class UploadMultipartController extends Controller
         return response()->json($result['body'], $result['status']);
     }
 
-    public function complete(): JsonResponse
-    {
-        return response()->json([
-            'ok' => false,
-            'message' => 'Multipart completion is not implemented yet.',
-        ], 501);
+    public function complete(
+        CompleteMultipartUploadRequest $request,
+        UploadMultipartService $service,
+        string $uploadId,
+        string $uploadFileId,
+    ): JsonResponse {
+        $result = $service->complete(
+            user: $request->user(),
+            uploadId: $uploadId,
+            uploadFileId: $uploadFileId,
+            parts: $request->validated('parts')
+        );
+
+        return response()->json($result['body'], $result['status']);
     }
 
-    public function abort(): JsonResponse
-    {
-        return response()->json([
-            'ok' => false,
-            'message' => 'Multipart abort is not implemented yet.',
-        ], 501);
+    public function abort(
+        AbortMultipartUploadRequest $request,
+        UploadMultipartService $service,
+        string $uploadId,
+        string $uploadFileId,
+    ): JsonResponse {
+        $result = $service->abort(
+            user: $request->user(),
+            uploadId: $uploadId,
+            uploadFileId: $uploadFileId,
+        );
+
+        return response()->json($result['body'], $result['status']);
     }
 }

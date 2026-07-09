@@ -11,6 +11,7 @@ class UploadBatchService
     public function __construct(
         private readonly StoreUploadedFile $storeUploadedFile,
         private readonly StorageUserService $storageUserService,
+        private readonly UploadTargetFolderResolver $targetFolderResolver,
     ) {}
 
     /**
@@ -55,7 +56,7 @@ class UploadBatchService
             $clientId = $clientIds[$index];
             $relativePath = $relativePaths[$index] ?? null;
 
-            $targetParent = $this->resolveTargetParentFromRelativePath(
+            $targetParent = $this->targetFolderResolver->resolve(
                 user: $user,
                 rootParent: $parent,
                 relativePath: $relativePath,
@@ -102,47 +103,5 @@ class UploadBatchService
             ->where('created_by', $user->id)
             ->whereIsRoot()
             ->firstOrFail();
-    }
-
-    public function resolveTargetParentFromRelativePath(
-        User $user,
-        File $rootParent,
-        ?string $relativePath,
-    ): File {
-        if (! $relativePath) {
-            return $rootParent;
-        }
-
-        $parts = array_values(array_filter(explode('/', trim($relativePath, '/'))));
-
-        array_pop($parts);
-
-        if (! $parts) {
-            return $rootParent;
-        }
-
-        $parent = $rootParent;
-
-        foreach ($parts as $folderName) {
-            $folder = File::query()
-                ->where('created_by', $user->id)
-                ->where('parent_id', $parent->id)
-                ->where('is_folder', true)
-                ->where('name', $folderName)
-                ->whereNull('deleted_at')
-                ->first();
-
-            if (! $folder) {
-                $folder = new File;
-                $folder->is_folder = true;
-                $folder->name = $folderName;
-
-                $parent->appendNode($folder);
-            }
-
-            $parent = $folder;
-        }
-
-        return $parent;
     }
 }

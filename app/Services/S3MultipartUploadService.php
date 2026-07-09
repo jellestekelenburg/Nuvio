@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Aws\S3\Exception\S3Exception;
 use Aws\S3\S3Client;
 use Illuminate\Filesystem\AwsS3V3Adapter;
 use Illuminate\Support\Facades\Storage;
@@ -10,6 +11,7 @@ use RuntimeException;
 final class S3MultipartUploadService
 {
     private S3Client $client;
+
     private string $bucket;
 
     public function __construct()
@@ -34,8 +36,8 @@ final class S3MultipartUploadService
             'Bucket' => $this->bucket,
             'Key' => $key,
             'Metadata' => collect($metadata)
-            ->mapWithKeys(fn ($value, $key) => [(string) $key => (string) $value])
-            ->all(),
+                ->mapWithKeys(fn ($value, $key) => [(string) $key => (string) $value])
+                ->all(),
         ];
 
         if ($contentType) {
@@ -57,7 +59,7 @@ final class S3MultipartUploadService
             'Bucket' => $this->bucket,
             'Key' => $key,
             'UploadId' => $s3UploadId,
-            'PartNumber' => $partNumber
+            'PartNumber' => $partNumber,
         ]);
 
         $request = $this->client->createPresignedRequest(
@@ -66,5 +68,47 @@ final class S3MultipartUploadService
         );
 
         return (string) $request->getUri();
+    }
+
+    public function completeMultiPartUpload(string $key, string $s3UploadId, array $parts): void
+    {
+        $this->client->completeMultipartUpload([
+            'Bucket' => $this->bucket,
+            'Key' => $key,
+            'UploadId' => $s3UploadId,
+            'MultipartUpload' => [
+                'Parts' => collect($parts)->map(fn (array $part) => [
+                    'PartNumber' => (int) $part['part_number'],
+                    'ETag' => trim((string) $part['etag']),
+                ])->values()->all(),
+            ],
+        ]);
+    }
+
+    public function objectSize(string $key): int
+    {
+        $result = $this->client->headObject([
+            'Bucket' => $this->bucket,
+            'Key' => $key,
+        ]);
+
+        return (int) $result['ContentLength'];
+    }
+
+    public function abortMultipartUpload(string $key, string $s3UploadId): void
+    {
+        try {
+            $this->client->abortMultipartUpload([
+                'Bucket' => $this->bucket,
+                'Key' => $key,
+                'UploadId' => $s3UploadId,
+            ]);
+        } catch (S3Exception $exception) {
+            if ($exception->getAwsErrorCode() === 'NoSuchUpload') {
+                return;
+            }
+
+            throw $exception;
+        }
     }
 }

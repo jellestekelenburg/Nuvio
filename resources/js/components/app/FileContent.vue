@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { useForm, usePage } from '@inertiajs/vue3';
+import { router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import FormProgress from '@/components/app/FormProgress.vue';
 import Notification from '@/components/app/global/Notification.vue';
+import UploadSummary from '@/components/app/UploadSummary.vue';
 import { SidebarInset } from '@/components/ui/sidebar';
 import {
     emitter,
     FILE_UPLOAD_STARTED,
     showErrorNotification,
+    showSuccessNotification,
 } from '@/composables/event-bus';
 import { uploadErrorMessage } from '@/lib/uploads/errors';
-import type { UploadQueueItem } from '@/lib/uploads/types';
+import type { UploadPlanResponse, UploadQueueItem } from '@/lib/uploads/types';
 import { uploadSelection } from '@/lib/uploads/uploadOrchestrator';
 
 type Props = {
@@ -19,6 +21,13 @@ type Props = {
 };
 
 const dragOver = ref(false);
+const uploadQueue = ref<UploadQueueItem[]>([]);
+const uploadPlan = ref<UploadPlanResponse | null>(null);
+const uploadState = ref<'idle' | 'planning' | 'uploading' | 'completed' | 'failed'>(
+    'idle',
+);
+const uploadStartedAt = ref<string | null>(null);
+const uploadFinishedAt = ref<string | null>(null);
 const page = usePage();
 const fileUploadForm = useForm<{
     files: File[];
@@ -39,6 +48,9 @@ const currentFolderId = computed<number | null>(() => {
 
 const props = defineProps<Props>();
 const className = computed(() => props.class);
+const showUploadPanel = computed(
+    () => uploadState.value !== 'idle' && uploadQueue.value.length > 0,
+);
 
 function onDragOver() {
     dragOver.value = true;
@@ -58,13 +70,32 @@ function handleDrop(ev: DragEvent) {
 }
 
 async function uploadFiles(files: FileList | File[]) {
+    uploadState.value = 'planning';
+    uploadStartedAt.value = new Date().toISOString();
+    uploadFinishedAt.value = null;
+    uploadPlan.value = null;
+    uploadQueue.value = [];
+
     try {
         await uploadSelection({
             files,
             parentId: currentFolderId.value,
             onQueueCreated: syncUploadForm,
+            onQueueUpdated: syncUploadQueue,
+            onPlanCreated: (plan) => {
+                uploadPlan.value = plan;
+                uploadState.value = plan.ok ? 'uploading' : 'failed';
+            },
         });
+
+        uploadState.value = 'completed';
+        uploadFinishedAt.value = new Date().toISOString();
+        showSuccessNotification('Upload completed successfully.');
+        reloadFiles();
+        window.setTimeout(resetUploadPanel, 1500);
     } catch (error) {
+        uploadState.value = 'failed';
+        uploadFinishedAt.value = new Date().toISOString();
         handleError(error);
     }
 }
@@ -75,6 +106,11 @@ function syncUploadForm(uploadItems: UploadQueueItem[]) {
     fileUploadForm.relative_paths = uploadItems.map(
         (item) => item.relative_path,
     );
+    syncUploadQueue(uploadItems);
+}
+
+function syncUploadQueue(uploadItems: UploadQueueItem[]) {
+    uploadQueue.value = uploadItems.map((item) => ({ ...item }));
 }
 
 function handleError(error: unknown) {
@@ -94,6 +130,21 @@ onMounted(() => {
 onUnmounted(() => {
     emitter.off(FILE_UPLOAD_STARTED, handleUploadStarted);
 });
+
+function reloadFiles() {
+    router.reload({
+        only: ['files', 'folder', 'ancestors'],
+        preserveScroll: true,
+    });
+}
+
+function resetUploadPanel() {
+    uploadState.value = 'idle';
+    uploadQueue.value = [];
+    uploadPlan.value = null;
+    uploadStartedAt.value = null;
+    uploadFinishedAt.value = null;
+}
 </script>
 
 <template>
@@ -114,6 +165,14 @@ onUnmounted(() => {
         </template>
         <template v-else>
             <slot />
+            <UploadSummary
+                :show="showUploadPanel"
+                :state="uploadState"
+                :queue="uploadQueue"
+                :plan="uploadPlan"
+                :started-at="uploadStartedAt"
+                :finished-at="uploadFinishedAt"
+            />
             <FormProgress :form="fileUploadForm" />
             <Notification />
         </template>
