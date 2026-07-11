@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { useForm, usePage } from '@inertiajs/vue3';
-import axios from 'axios';
-import { computed, onMounted, ref } from 'vue';
+import { router, useForm, usePage } from '@inertiajs/vue3';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import FormProgress from '@/components/app/FormProgress.vue';
 import Notification from '@/components/app/global/Notification.vue';
+import UploadSummary from '@/components/app/UploadSummary.vue';
 import { SidebarInset } from '@/components/ui/sidebar';
 import {
     emitter,
@@ -11,7 +11,9 @@ import {
     showErrorNotification,
     showSuccessNotification,
 } from '@/composables/event-bus';
-import file from '@/routes/file';
+import { uploadErrorMessage } from '@/lib/uploads/errors';
+import type { UploadPlanResponse, UploadQueueItem } from '@/lib/uploads/types';
+import { uploadSelection } from '@/lib/uploads/uploadOrchestrator';
 
 type Props = {
     variant?: 'header' | 'sidebar';
@@ -19,6 +21,13 @@ type Props = {
 };
 
 const dragOver = ref(false);
+const uploadQueue = ref<UploadQueueItem[]>([]);
+const uploadPlan = ref<UploadPlanResponse | null>(null);
+const uploadState = ref<
+    'idle' | 'planning' | 'uploading' | 'completed' | 'failed'
+>('idle');
+const uploadStartedAt = ref<string | null>(null);
+const uploadFinishedAt = ref<string | null>(null);
 const page = usePage();
 const fileUploadForm = useForm<{
     files: File[];
@@ -39,6 +48,9 @@ const currentFolderId = computed<number | null>(() => {
 
 const props = defineProps<Props>();
 const className = computed(() => props.class);
+const showUploadPanel = computed(
+    () => uploadState.value !== 'idle' && uploadQueue.value.length > 0,
+);
 
 function onDragOver() {
     dragOver.value = true;
@@ -57,65 +69,82 @@ function handleDrop(ev: DragEvent) {
     uploadFiles(files);
 }
 
-async function uploadFiles(files: any) {
-    fileUploadForm.parent_id = currentFolderId.value;
-    fileUploadForm.files = files;
-    fileUploadForm.relative_paths = [...files].map((f) => f.webkitRelativePath);
+async function uploadFiles(files: FileList | File[]) {
+    uploadState.value = 'planning';
+    uploadStartedAt.value = new Date().toISOString();
+    uploadFinishedAt.value = null;
+    uploadPlan.value = null;
+    uploadQueue.value = [];
 
-    //STEP 1: Checkup
-    const data = await checkUpload(Array.from(files));
+    try {
+        await uploadSelection({
+            files,
+            parentId: currentFolderId.value,
+            onQueueCreated: syncUploadForm,
+            onQueueUpdated: syncUploadQueue,
+            onPlanCreated: (plan) => {
+                uploadPlan.value = plan;
+                uploadState.value = plan.ok ? 'uploading' : 'failed';
+            },
+        });
 
-    if (!data.ok) {
-        console.log(data);
-        showErrorNotification(data.errors?.[0]?.message ?? data.message);
-        return;
+        uploadState.value = 'completed';
+        uploadFinishedAt.value = new Date().toISOString();
+        showSuccessNotification('Upload completed successfully.');
+        reloadFiles();
+        window.setTimeout(resetUploadPanel, 1500);
+    } catch (error) {
+        uploadState.value = 'failed';
+        uploadFinishedAt.value = new Date().toISOString();
+        handleError(error);
     }
-
-    //STEP 2: Do actual upload
-    fileUploadForm.post(file.store().url, {
-        onSuccess: () => {
-            showSuccessNotification(
-                `${files.length} files have been uploaded.`,
-            );
-        },
-        onError: (errors) => {
-            let message = '';
-
-            if (Object.keys(errors).length > 0) {
-                message = errors[Object.keys(errors)[0]];
-            } else {
-                message = 'Error during file upload, please try again.';
-            }
-
-            showErrorNotification(message);
-        },
-        onFinish: () => {
-            fileUploadForm.clearErrors();
-            fileUploadForm.reset();
-        },
-    });
 }
 
-async function checkUpload(files: File[]) {
-    const payload = {
-        parent_id: currentFolderId.value,
-        files: Array.from(files).map((file) => ({
-            name: file.name,
-            size: file.size,
-            relative_path: file.webkitRelativePath || '',
-        })),
-    };
+function syncUploadForm(uploadItems: UploadQueueItem[]) {
+    fileUploadForm.parent_id = currentFolderId.value;
+    fileUploadForm.files = uploadItems.map((item) => item.file);
+    fileUploadForm.relative_paths = uploadItems.map(
+        (item) => item.relative_path,
+    );
+    syncUploadQueue(uploadItems);
+}
 
-    const { data } = await axios.post('/api/uploads/check', payload, {
-        validateStatus: (status) => status === 200 || status === 422,
-    });
+function syncUploadQueue(uploadItems: UploadQueueItem[]) {
+    uploadQueue.value = uploadItems.map((item) => ({ ...item }));
+}
 
-    return data;
+function handleError(error: unknown) {
+    showErrorNotification(uploadErrorMessage(error));
+}
+
+function handleUploadStarted(files: unknown) {
+    if (files instanceof FileList || Array.isArray(files)) {
+        void uploadFiles(files);
+    }
 }
 
 onMounted(() => {
-    emitter.on(FILE_UPLOAD_STARTED, uploadFiles);
+    emitter.on(FILE_UPLOAD_STARTED, handleUploadStarted);
 });
+
+onUnmounted(() => {
+    emitter.off(FILE_UPLOAD_STARTED, handleUploadStarted);
+});
+
+function reloadFiles() {
+    router.reload({
+        only: ['files', 'folder', 'ancestors'],
+        preserveScroll: true,
+    });
+}
+
+function resetUploadPanel() {
+    uploadState.value = 'idle';
+    uploadQueue.value = [];
+    uploadPlan.value = null;
+    uploadStartedAt.value = null;
+    uploadFinishedAt.value = null;
+}
 </script>
 
 <template>
@@ -136,6 +165,14 @@ onMounted(() => {
         </template>
         <template v-else>
             <slot />
+            <UploadSummary
+                :show="showUploadPanel"
+                :state="uploadState"
+                :queue="uploadQueue"
+                :plan="uploadPlan"
+                :started-at="uploadStartedAt"
+                :finished-at="uploadFinishedAt"
+            />
             <FormProgress :form="fileUploadForm" />
             <Notification />
         </template>

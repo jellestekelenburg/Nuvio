@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import CreateNewMenuContent from '@/components/app/CreateNewMenuContent.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +23,20 @@ const emit = defineEmits<{
 }>();
 
 const isOpen = ref(false);
+const shouldCreateFolder = ref(false);
+
+function handleCreateFolderSelect() {
+    shouldCreateFolder.value = true;
+}
+
+watch(isOpen, (open) => {
+    if (!open && shouldCreateFolder.value) {
+        shouldCreateFolder.value = false;
+        requestAnimationFrame(() => {
+            emit('create-folder');
+        });
+    }
+});
 </script>
 
 <template>
@@ -35,8 +49,7 @@ const isOpen = ref(false);
         <DropdownMenuContent align="end" class="w-42">
             <CreateNewMenuContent
                 :item-component="DropdownMenuItem"
-                @close="isOpen = false"
-                @create-folder="emit('create-folder')"
+                @create-folder-select="handleCreateFolderSelect"
             />
         </DropdownMenuContent>
     </DropdownMenu>

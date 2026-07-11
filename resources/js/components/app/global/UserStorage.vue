@@ -52,7 +52,7 @@ onMounted(() => {
 
     intervalId = setInterval(() => {
         fetchData();
-    }, 10000);
+    }, 45000);
 });
 onUnmounted(() => {
     if (intervalId) {

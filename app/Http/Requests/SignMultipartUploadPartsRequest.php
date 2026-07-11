@@ -1,22 +1,18 @@
 <?php
 
-namespace App\Http\Requests\Settings;
+namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Laravel\Fortify\Features;
-use Laravel\Fortify\InteractsWithTwoFactorState;
 
-class TwoFactorAuthenticationRequest extends FormRequest
+class SignMultipartUploadPartsRequest extends FormRequest
 {
-    use InteractsWithTwoFactorState;
-
     /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
     {
-        return Features::enabled(Features::twoFactorAuthentication());
+        return true;
     }
 
     /**
@@ -26,6 +22,9 @@ class TwoFactorAuthenticationRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [];
+        return [
+            'parts' => ['required', 'array', 'min:1', 'max:20'],
+            'parts.*' => ['required', 'integer', 'distinct', 'min:1'],
+        ];
     }
 }

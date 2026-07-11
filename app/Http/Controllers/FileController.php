@@ -9,20 +9,29 @@ use App\Http\Requests\TrashFilesRequest;
 use App\Http\Resources\FileResource;
 use App\Models\File;
 use App\Services\StorageUserService;
+use App\Services\StoreUploadedFile;
 use App\Services\ZipCreatorService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
 class FileController extends Controller
 {
+    private const int DEFAULT_PAGE_LIMIT = 50;
+
+    private const int MAX_PAGE_LIMIT = 100;
+
     protected StorageUserService $storageUserService;
 
-    public function __construct(StorageUserService $storageUserService)
-    {
+    public function __construct(
+        StorageUserService $storageUserService,
+        private readonly StoreUploadedFile $storeUploadedFile,
+    ) {
         $this->storageUserService = $storageUserService;
     }
 
@@ -43,6 +52,8 @@ class FileController extends Controller
             $sortDirection = 'desc';
         }
 
+        $limit = $this->paginationLimit($request);
+
         if ($folder) {
             $folder = File::query()
                 ->where('created_by', Auth::id())
@@ -52,16 +63,13 @@ class FileController extends Controller
             $folder = $this->getRoot();
         }
 
-        // $cache_key = 'Files_'.Auth::id().$folder->name.'page_'.$request->page;
-        // todo: cache files and clear cache when change in folder, maybe save on folder so we can
-        // clear folder and touch (extend) cache when revisit before cache expire
-
         $files = File::query()
             ->where('parent_id', $folder->id)
             ->where('created_by', Auth::id())
             ->orderBy('is_folder', 'desc')
             ->orderBy($sortColumn, $sortDirection)
-            ->paginate(10)
+            ->orderBy('files.id')
+            ->paginate($limit)
             ->withQueryString();
 
         $files = FileResource::collection($files);
@@ -83,11 +91,14 @@ class FileController extends Controller
 
     public function trash(Request $request)
     {
+        $limit = $this->paginationLimit($request);
+
         $files = File::onlyTrashed()
             ->where('created_by', Auth::id())
             ->orderBy('is_folder', 'desc')
             ->orderBy('files.deleted_at', 'desc')
-            ->paginate(10);
+            ->orderBy('files.id')
+            ->paginate($limit);
 
         $files = FileResource::collection($files);
 
@@ -116,7 +127,7 @@ class FileController extends Controller
         return redirect()->back();
     }
 
-    public function store(StoreFileRequest $request, StorageUserService $storageService)
+    public function store(StoreFileRequest $request)
     {
         $totalUploadedBytes = 0;
 
@@ -138,12 +149,19 @@ class FileController extends Controller
             }
         }
 
-        $storageService->addUsage($user, $totalUploadedBytes);
+        $this->storageUserService->addUsage($user, $totalUploadedBytes);
     }
 
     private function getRoot()
     {
         return File::query()->where('created_by', Auth::id())->whereIsRoot()->firstOrFail();
+    }
+
+    private function paginationLimit(Request $request): int
+    {
+        $limit = (int) $request->query('limit', self::DEFAULT_PAGE_LIMIT);
+
+        return max(1, min($limit, self::MAX_PAGE_LIMIT));
     }
 
     public function saveFileTree($fileTree, $parent, $user): int
@@ -168,22 +186,10 @@ class FileController extends Controller
 
     private function saveFile($file, $user, $parent): int
     {
-
-        $size = (int) $file->getSize();
-
         /* @var UploadedFile $file */
-        $path = $file->store('/files'.$user->id);
-
-        $model = new File;
-        $model->is_folder = false;
-        $model->storage_path = $path;
-        $model->name = $file->getClientOriginalName();
-        $model->mime = $file->getClientMimeType();
-        $model->size = $file->getSize();
-
-        $parent->appendNode($model);
-
-        return $size;
+        return (int) $this->storeUploadedFile
+            ->handle($file, $user, $parent)
+            ->size;
     }
 
     public function destroy(FilesActionsRequest $request): RedirectResponse
@@ -238,9 +244,7 @@ class FileController extends Controller
                     $url = $zipCreator->createZip($file->children);
                     $filename = $file->name.'.zip';
                 } else {
-                    $basename = pathinfo($file->storage_path, PATHINFO_BASENAME);
-                    Storage::disk('public')->put($basename, Storage::get($file->storage_path));
-                    $url = Storage::disk('public')->url($basename);
+                    $url = $this->temporaryDownloadUrl($file);
                     $filename = $file->name;
                 }
             } else {
@@ -254,6 +258,25 @@ class FileController extends Controller
             'url' => $url,
             'filename' => $filename,
         ];
+    }
+
+    private function temporaryDownloadUrl(File $file): string
+    {
+        $fallbackName = Str::ascii($file->name) ?: 'download';
+        $disposition = (new ResponseHeaderBag)->makeDisposition(
+            ResponseHeaderBag::DISPOSITION_ATTACHMENT,
+            $file->name,
+            $fallbackName,
+        );
+
+        return Storage::temporaryUrl(
+            $file->storage_path,
+            now()->addMinutes(15),
+            [
+                'ResponseContentDisposition' => $disposition,
+                'ResponseContentType' => $file->mime ?: 'application/octet-stream',
+            ],
+        );
     }
 
     public function restore(TrashFilesRequest $request)

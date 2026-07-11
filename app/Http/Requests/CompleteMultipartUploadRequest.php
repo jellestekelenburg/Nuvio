@@ -5,7 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class UploadCheckRequest extends FormRequest
+class CompleteMultipartUploadRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -23,8 +23,9 @@ class UploadCheckRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user' => 'required,exists:users,id',
-            'files' => 'required',
+            'parts' => ['required', 'array', 'min:1', 'max:10000'],
+            'parts.*.part_number' => ['required', 'integer', 'distinct', 'min:1'],
+            'parts.*.etag' => ['required', 'string', 'max:255'],
         ];
     }
 }

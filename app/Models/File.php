@@ -14,9 +14,34 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Kalnoy\Nestedset\NodeTrait;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property string|null $path
+ * @property string|null $storage_path
+ * @property int|null $parent_id
+ * @property bool $is_folder
+ * @property string|null $mime
+ * @property int|null $size
+ * @property int $created_by
+ * @property int $updated_by
+ * @property Carbon|null $deleted_at
+ */
 class File extends Model
 {
     use HasCreatorAndUpdater, NodeTrait, SoftDeletes;
+
+    protected $fillable = [
+        'name',
+        'path',
+        'storage_path',
+        'parent_id',
+        'is_folder',
+        'mime',
+        'size',
+        'created_by',
+        'updated_by',
+    ];
 
     protected $casts = [
         'is_folder' => 'boolean',
@@ -56,6 +81,7 @@ class File extends Model
     {
         return $this->created_by == $userId;
     }
+
     public function moveToTrash()
     {
         $this->deleted_at = Carbon::now();
@@ -92,6 +118,4 @@ class File extends Model
             $model->path = (! $model->parent->isRoot() ? $model->parent->path.'/' : '').Str::slug($model->name);
         });
     }
-
-
 }
