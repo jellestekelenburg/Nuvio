@@ -12,5 +12,4 @@ class RegistrationTest extends TestCase
 
         $response->assertOk();
     }
-
 }

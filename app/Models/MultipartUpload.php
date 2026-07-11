@@ -8,9 +8,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MultipartUpload extends Model
 {
     public const string STATUS_INITIATED = 'initiated';
+
     public const string STATUS_UPLOADING = 'uploading';
+
     public const string STATUS_COMPLETED = 'completed';
+
     public const string STATUS_ABORTED = 'aborted';
+
     public const string STATUS_FAILED = 'failed';
 
     protected $fillable = [

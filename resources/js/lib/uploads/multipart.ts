@@ -100,7 +100,9 @@ async function uploadMultipartFile({
 
                     uploadItem.progress = Math.min(
                         100,
-                        Math.round((uploadedBytes / uploadItem.file.size) * 100),
+                        Math.round(
+                            (uploadedBytes / uploadItem.file.size) * 100,
+                        ),
                     );
                     onQueueUpdated?.(uploadItems);
                 },

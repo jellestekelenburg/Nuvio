@@ -81,6 +81,7 @@ class File extends Model
     {
         return $this->created_by == $userId;
     }
+
     public function moveToTrash()
     {
         $this->deleted_at = Carbon::now();

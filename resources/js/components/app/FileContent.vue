@@ -23,9 +23,9 @@ type Props = {
 const dragOver = ref(false);
 const uploadQueue = ref<UploadQueueItem[]>([]);
 const uploadPlan = ref<UploadPlanResponse | null>(null);
-const uploadState = ref<'idle' | 'planning' | 'uploading' | 'completed' | 'failed'>(
-    'idle',
-);
+const uploadState = ref<
+    'idle' | 'planning' | 'uploading' | 'completed' | 'failed'
+>('idle');
 const uploadStartedAt = ref<string | null>(null);
 const uploadFinishedAt = ref<string | null>(null);
 const page = usePage();

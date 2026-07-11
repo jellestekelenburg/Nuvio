@@ -70,13 +70,12 @@ export type InitiatedMultipartUpload = {
     signing_window: number;
 };
 
-
 export type SignedMultipartPart = {
     part_number: number;
     url: string;
     start: number;
     end: number;
-}
+};
 
 export type SignedMultipartPartsResponse = {
     ok: true;
@@ -85,9 +84,9 @@ export type SignedMultipartPartsResponse = {
     parts: SignedMultipartPart[];
     expires_in: number;
     expires_at: string;
-}
+};
 
 export type CompletedMultipartPart = {
     part_number: number;
     etag: string;
-}
+};

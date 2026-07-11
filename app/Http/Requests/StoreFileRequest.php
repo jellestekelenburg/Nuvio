@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\File;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 
@@ -30,7 +31,7 @@ class StoreFileRequest extends ParentIdBaseRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -90,7 +91,6 @@ class StoreFileRequest extends ParentIdBaseRequest
         if (! $paths) {
             return null;
         }
-
 
         $parts = explode('/', $paths[0]);
 
