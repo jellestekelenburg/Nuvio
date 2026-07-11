@@ -37,14 +37,14 @@ const currentFolderId = computed<number | null>(() => {
 
 function createFolder() {
     form.parent_id = currentFolderId.value;
-    form.post(folder.create(), {
+    form.post(folder.create() as unknown as string, {
         preserveScroll: true,
         onSuccess: () => {
             closeModal();
             form.reset();
             router.reload({
                 only: ['files', 'folder', 'ancestors'],
-                preserveScroll: true,
+                preserveUrl: true,
             });
         },
     });
@@ -61,9 +61,11 @@ function closeModal() {
         :open="props.modelValue"
         @update:open="emit('update:modelValue', $event)"
     >
-        <DialogContent class="sm:max-w-md">
+        <DialogContent class="rounded-xl sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>Create New Folder</DialogTitle>
+                <DialogTitle class="text-zinc-800"
+                    >Create New Folder</DialogTitle
+                >
             </DialogHeader>
 
             <div class="mt-2">
