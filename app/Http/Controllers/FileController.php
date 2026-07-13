@@ -188,7 +188,12 @@ class FileController extends Controller
     {
         /* @var UploadedFile $file */
         return (int) $this->storeUploadedFile
-            ->handle($file, $user, $parent)
+            ->handle(
+                file: $file,
+                user: $user,
+                parent: $parent,
+                name: $file->getClientOriginalName(),
+            )
             ->size;
     }
 

@@ -31,12 +31,25 @@ export async function uploadSelection({
         throw new Error(plan.errors?.[0]?.message ?? plan.message);
     }
 
+    const plannedFilesByClientId = new Map(
+        plan.files.map((file) => [file.client_id, file]),
+    );
+
+    for (const item of uploadItems) {
+        const plannedFile = plannedFilesByClientId.get(item.client_id);
+
+        if (plannedFile) {
+            item.name = plannedFile.name;
+        }
+    }
+
+    onQueueUpdated?.(uploadItems);
+
     if (plan.small_file_batches.length > 0) {
         await uploadInBatches({
             uploadId: plan.upload_id,
             batches: plan.small_file_batches,
             uploadItems,
-            parentId,
             onQueueUpdated,
         });
     }
@@ -46,7 +59,6 @@ export async function uploadSelection({
             uploadId: plan.upload_id,
             files: plan.multipart_files,
             uploadItems,
-            parentId,
             onQueueUpdated,
         });
     }

@@ -6,7 +6,6 @@ type UploadBatchesOptions = {
     uploadId: string;
     batches: UploadPlanBatch[];
     uploadItems: UploadQueueItem[];
-    parentId: number | null;
     onQueueUpdated?: (uploadItems: UploadQueueItem[]) => void;
 };
 
@@ -14,7 +13,6 @@ export async function uploadInBatches({
     uploadId,
     batches,
     uploadItems,
-    parentId,
     onQueueUpdated,
 }: UploadBatchesOptions) {
     const itemByClientId = new Map(
@@ -26,7 +24,6 @@ export async function uploadInBatches({
             uploadId,
             batch,
             itemByClientId,
-            parentId,
             uploadItems,
             onQueueUpdated,
         });
@@ -37,22 +34,16 @@ async function uploadBatch({
     uploadId,
     batch,
     itemByClientId,
-    parentId,
     uploadItems,
     onQueueUpdated,
 }: {
     uploadId: string;
     batch: UploadPlanBatch;
     itemByClientId: Map<string, UploadQueueItem>;
-    parentId: number | null;
     uploadItems: UploadQueueItem[];
     onQueueUpdated?: (uploadItems: UploadQueueItem[]) => void;
 }) {
     const form = new FormData();
-
-    if (parentId !== null) {
-        form.append('parent_id', String(parentId));
-    }
 
     for (const clientId of batch.files) {
         const item = itemByClientId.get(clientId);
@@ -66,7 +57,6 @@ async function uploadBatch({
 
         form.append('files[]', item.file);
         form.append('client_ids[]', item.client_id);
-        form.append('relative_paths[]', item.relative_path);
     }
 
     const { data } = await axios.post(
@@ -78,10 +68,11 @@ async function uploadBatch({
         throw new Error(data.message ?? 'Batch upload failed.');
     }
 
-    for (const clientId of batch.files) {
-        const item = itemByClientId.get(clientId);
+    for (const uploadedFile of data.files) {
+        const item = itemByClientId.get(uploadedFile.client_id);
 
         if (item) {
+            item.name = uploadedFile.name;
             item.status = 'done';
             item.progress = 100;
             onQueueUpdated?.(uploadItems);

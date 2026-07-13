@@ -22,7 +22,6 @@ class UploadMultipartController extends Controller
             user: $request->user(),
             uploadId: $uploadId,
             uploadFileId: $uploadFileId,
-            parentId: $request->integer('parent_id') ?: null,
         );
 
         return response()->json($result['body'], $result['status']);

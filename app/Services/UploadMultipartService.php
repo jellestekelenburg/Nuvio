@@ -20,13 +20,13 @@ class UploadMultipartService
         private readonly RegisterStoredS3File $registerStoredS3File,
         private readonly StorageUserService $storageUserService,
         private readonly UploadTargetFolderResolver $targetFolderResolver,
+        private readonly AvailableNodeNameService $availableNodeNameService,
     ) {}
 
     public function initiate(
         User $user,
         string $uploadId,
         string $uploadFileId,
-        ?int $parentId,
     ): array {
         $plan = Cache::get("upload-plan:{$user->id}:{$uploadId}");
 
@@ -36,6 +36,14 @@ class UploadMultipartService
                 'code' => 'upload_plan_not_found',
                 'message' => 'Upload plan not found or expired.',
             ], 404);
+        }
+
+        if (($plan['version'] ?? null) !== UploadPlanService::VERSION) {
+            return $this->result([
+                'ok' => false,
+                'code' => 'upload_plan_incompatible',
+                'message' => 'Upload plan is incompatible. Please start the upload again.',
+            ], 409);
         }
 
         $plannedFile = collect($plan['multipart_files'] ?? [])
@@ -87,8 +95,9 @@ class UploadMultipartService
             ], 422);
         }
 
-        $parent = $this->resolveParent($user, $parentId);
-        $s3Key = $this->makeS3Key($user, (string) $plannedFile['name']);
+        $parent = $this->resolveParent($user, (int) $plan['parent_id']);
+        $originalName = (string) $plannedFile['original_name'];
+        $s3Key = $this->makeS3Key($user, $originalName);
 
         $s3UploadId = $this->s3MultipartUploadService->createMultipartUpload(
             key: $s3Key,
@@ -97,7 +106,7 @@ class UploadMultipartService
                 'user_id' => $user->id,
                 'upload_id' => $uploadId,
                 'upload_file_id' => $uploadFileId,
-                'original_name_base64' => base64_encode((string) $plannedFile['name']),
+                'original_name_base64' => base64_encode($originalName),
             ],
         );
 
@@ -107,7 +116,7 @@ class UploadMultipartService
             'user_id' => $user->id,
             'parent_id' => $parent->id,
             'client_id' => $plannedFile['client_id'],
-            'name' => $plannedFile['name'],
+            'name' => $originalName,
             'relative_path' => $plannedFile['relative_path'] ?? null,
             'content_type' => $plannedFile['content_type'] ?? null,
             'size' => $size,
@@ -269,18 +278,32 @@ class UploadMultipartService
         }
 
         $file = DB::transaction(function () use ($user, $upload) {
-            $rootParent = $this->resolveParent($user, $upload->parent_id);
+            $rootParent = File::query()
+                ->whereKey($upload->parent_id)
+                ->where('created_by', $user->id)
+                ->where('is_folder', true)
+                ->whereNull('deleted_at')
+                ->lockForUpdate()
+                ->firstOrFail();
             $targetParent = $this->targetFolderResolver->resolve(
                 user: $user,
                 rootParent: $rootParent,
                 relativePath: $upload->relative_path,
+            );
+            $targetParent = File::query()
+                ->whereKey($targetParent->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $finalName = $this->availableNodeNameService->generate(
+                targetParent: $targetParent,
+                requestedName: $upload->name,
             );
 
             $file = $this->registerStoredS3File->handle(
                 user: $user,
                 parent: $targetParent,
                 s3Key: $upload->s3_key,
-                name: $upload->name,
+                name: $finalName,
                 mime: $upload->content_type,
                 size: $upload->size,
             );
@@ -393,17 +416,19 @@ class UploadMultipartService
 
     private function resolveParent(User $user, ?int $parentId): File
     {
-        if ($parentId) {
+        if ($parentId !== null) {
             return File::query()
                 ->where('id', $parentId)
                 ->where('created_by', $user->id)
                 ->where('is_folder', true)
+                ->whereNull('deleted_at')
                 ->firstOrFail();
         }
 
         return File::query()
             ->where('created_by', $user->id)
             ->whereIsRoot()
+            ->whereNull('deleted_at')
             ->firstOrFail();
     }
 

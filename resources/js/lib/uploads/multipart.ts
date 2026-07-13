@@ -13,7 +13,6 @@ type UploadMultipartFilesOptions = {
     uploadId: string;
     files: UploadPlanMultipartFile[];
     uploadItems: UploadQueueItem[];
-    parentId: number | null;
     onQueueUpdated?: (uploadItems: UploadQueueItem[]) => void;
 };
 
@@ -21,7 +20,6 @@ export async function uploadMultipartFiles({
     uploadId,
     files,
     uploadItems,
-    parentId,
     onQueueUpdated,
 }: UploadMultipartFilesOptions) {
     const itemByClientId = new Map(
@@ -44,7 +42,6 @@ export async function uploadMultipartFiles({
             uploadId,
             plannedFile,
             uploadItem,
-            parentId,
             uploadItems,
             onQueueUpdated,
         });
@@ -55,21 +52,18 @@ async function uploadMultipartFile({
     uploadId,
     plannedFile,
     uploadItem,
-    parentId,
     uploadItems,
     onQueueUpdated,
 }: {
     uploadId: string;
     plannedFile: UploadPlanMultipartFile;
     uploadItem: UploadQueueItem;
-    parentId: number | null;
     uploadItems: UploadQueueItem[];
     onQueueUpdated?: (uploadItems: UploadQueueItem[]) => void;
 }) {
     const upload = await initiateMultipartUpload({
         uploadId,
         plannedFile,
-        parentId,
     });
 
     const completedParts: CompletedMultipartPart[] = [];
@@ -110,12 +104,13 @@ async function uploadMultipartFile({
         }
         completedParts.sort((a, b) => a.part_number - b.part_number);
 
-        await completeMultipartUpload({
+        const completed = await completeMultipartUpload({
             uploadId,
             uploadFileId: plannedFile.upload_file_id,
             parts: completedParts,
         });
 
+        uploadItem.name = completed.file.name;
         uploadItem.status = 'done';
         uploadItem.progress = 100;
         onQueueUpdated?.(uploadItems);
@@ -136,17 +131,12 @@ async function uploadMultipartFile({
 async function initiateMultipartUpload({
     uploadId,
     plannedFile,
-    parentId,
 }: {
     uploadId: string;
     plannedFile: UploadPlanMultipartFile;
-    parentId: number | null;
 }): Promise<InitiatedMultipartUpload> {
     const { data } = await axios.post(
         `/api/uploads/${uploadId}/multipart/${plannedFile.upload_file_id}/initiate`,
-        {
-            parent_id: parentId,
-        },
     );
 
     if (!data.ok) {
