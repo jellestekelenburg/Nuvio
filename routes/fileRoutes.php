@@ -39,6 +39,7 @@ Route::controller(FileController::class)
         Route::get('/trash', 'trash')->name('trash');
         Route::post('/folder/create', 'createFolder')->name('folder.create');
         Route::post('/file', 'store')->name('file.store');
+        Route::patch('/file/{file}/rename', 'rename')->name('file.rename');
         Route::delete('file', 'destroy')->name('file.delete');
         Route::post('/file/restore', 'restore')->name('file.restore');
         Route::delete('/file/destroy', 'deleteForever')->name('file.destroy');

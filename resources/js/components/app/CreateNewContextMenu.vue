@@ -37,6 +37,7 @@ watch(isOpen, (open) => {
 
         <ContextMenuContent
             class="w-42 rounded-md border bg-white p-1 shadow-lg"
+            @contextmenu.stop.prevent
         >
             <CreateNewMenuContent
                 :item-component="ContextMenuItem"
