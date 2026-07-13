@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\FilesActionsRequest;
+use App\Http\Requests\RenameFileRequest;
 use App\Http\Requests\StoreFileRequest;
 use App\Http\Requests\StoreFolderRequest;
 use App\Http\Requests\TrashFilesRequest;
@@ -15,6 +16,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -127,6 +129,32 @@ class FileController extends Controller
         return redirect()->back();
     }
 
+    public function rename(RenameFileRequest $request, File $file): RedirectResponse
+    {
+        $name = $request->validated('name');
+
+        DB::transaction(function () use ($file, $name): void {
+            $oldPath = $file->path;
+            $parent = $file->parent;
+            $newPath = (! $parent->isRoot() ? $parent->path.'/' : '').Str::slug($name);
+
+            $file->name = $name;
+            $file->path = $newPath;
+            $file->save();
+
+            if ($file->is_folder && $oldPath !== $newPath) {
+                $file->descendants()->get()->each(function (File $descendant) use ($oldPath, $newPath): void {
+                    if ($descendant->path && str_starts_with($descendant->path, $oldPath.'/')) {
+                        $descendant->path = $newPath.substr($descendant->path, strlen($oldPath));
+                        $descendant->save();
+                    }
+                });
+            }
+        });
+
+        return redirect()->back();
+    }
+
     public function store(StoreFileRequest $request)
     {
         $totalUploadedBytes = 0;
@@ -188,7 +216,12 @@ class FileController extends Controller
     {
         /* @var UploadedFile $file */
         return (int) $this->storeUploadedFile
-            ->handle($file, $user, $parent)
+            ->handle(
+                file: $file,
+                user: $user,
+                parent: $parent,
+                name: $file->getClientOriginalName(),
+            )
             ->size;
     }
 

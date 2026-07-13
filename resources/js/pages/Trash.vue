@@ -2,7 +2,7 @@
 import { Head } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import CreateFolderModal from '@/components/app/CreateFolderModal.vue';
-import CreateNewContextMenu from '@/components/app/createNewContextMenu.vue';
+import CreateNewContextMenu from '@/components/app/CreateNewContextMenu.vue';
 import DeleteForeverButton from '@/components/app/DeleteForeverButton.vue';
 import FileIcon from '@/components/app/FileIcon.vue';
 import RestoreFilesButton from '@/components/app/RestoreFilesButton.vue';

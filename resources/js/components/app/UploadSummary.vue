@@ -71,15 +71,21 @@ function formatBytes(bytes: number): string {
 <template>
     <div
         v-if="show"
-        class="fixed top-0 right-0 bottom-0 left-0 z-99999 flex h-screen w-screen flex-col items-center justify-center bg-black/40 p-6 backdrop-blur-xs"
+        class="fixed inset-0 z-99999 flex h-screen w-screen flex-col items-center justify-center bg-black/80 p-6"
     >
         <div
             class="flex w-160 max-w-full flex-col rounded-xl border border-border bg-white p-6 text-zinc-950"
         >
             <h4 class="text-xl font-bold text-zinc-800">Upload progress</h4>
-            <p class="text-sm text-zinc-500">
-                Please wait until the upload is completed
-            </p>
+            <div class="flex flex-wrap justify-between gap-x-6">
+                <p class="text-sm text-zinc-500">
+                    Please wait until the upload is completed
+                </p>
+                <p class="text-sm text-zinc-500">
+                    Uploading {{ summary.total_files }}
+                    {{ summary.total_files > 1 ? 'files' : 'file' }}
+                </p>
+            </div>
 
             <div
                 class="upload-bar relative my-3 h-1.5 w-full overflow-hidden rounded-full"
@@ -89,24 +95,8 @@ function formatBytes(bytes: number): string {
                     :style="{ width: `${summary.average_progress}%` }"
                 ></div>
             </div>
-            <div
-                class="flex flex-wrap justify-between gap-2 text-xs text-zinc-400"
-            >
-                <span
-                    >Uploading {{ summary.total_files }}
-                    {{ summary.total_files > 1 ? 'files' : 'file' }}</span
-                >
-                <span class="inline-flex gap-1">
-                    <template v-for="(item, key) in summary.counts" :key="key">
-                        <span
-                            v-if="
-                                key !== 'planning' &&
-                                (key !== 'failed' || item > 0)
-                            "
-                            >{{ key }}: {{ item }}</span
-                        >
-                    </template>
-                </span>
+            <div class="flex justify-end gap-2 text-xs text-zinc-400">
+                <span>{{ summary.total_size }}</span>
             </div>
         </div>
     </div>

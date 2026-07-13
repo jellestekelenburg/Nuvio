@@ -21,9 +21,7 @@ class UploadBatchController extends Controller
             uploadId: $uploadId,
             batchId: $batchId,
             files: $request->file('files', []),
-            parentId: $request->integer('parent_id') ?: null,
-            clientIds: $request->input('client_ids', []),
-            relativePaths: $request->input('relative_paths', []),
+            clientIds: $request->validated('client_ids'),
         );
 
         return response()->json($result);

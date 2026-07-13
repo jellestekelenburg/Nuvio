@@ -10,11 +10,13 @@ import {
 } from 'vue';
 import BreadCrumbs from '@/components/app/BreadCrumbs.vue';
 import CreateFolderModal from '@/components/app/CreateFolderModal.vue';
-import CreateNewContextMenu from '@/components/app/createNewContextMenu.vue';
+import CreateNewContextMenu from '@/components/app/CreateNewContextMenu.vue';
 import CreateNewDropdown from '@/components/app/CreateNewDropdown.vue';
 import DeleteFilesButton from '@/components/app/DeleteFilesButton.vue';
 import DownloadFilesButton from '@/components/app/DownloadFilesButton.vue';
+import FileContextMenu from '@/components/app/FileContextMenu.vue';
 import FileIcon from '@/components/app/FileIcon.vue';
+import RenameFileModal from '@/components/app/RenameFileModal.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { httpGet } from '@/composables/httpHelper';
 import FileLayout from '@/layouts/FileLayout.vue';
@@ -79,6 +81,8 @@ const allFiles = ref({
 const isLoadingMore = ref(false);
 const allSelected = ref(false);
 const createFolderModal = ref(false);
+const renameFileModal = ref(false);
+const fileToRename = ref<FileListItem | null>(null);
 const lastSelectedFile = ref(0);
 const selected = ref<Record<number, boolean>>({});
 const selectedIds = computed(() =>
@@ -238,6 +242,11 @@ function showCreateFolderModal() {
     createFolderModal.value = true;
 }
 
+function showRenameModal(file: FileListItem) {
+    fileToRename.value = file;
+    renameFileModal.value = true;
+}
+
 watch(
     () => currentFolderId.value,
     (newFolderId, oldFolderId) => {
@@ -284,6 +293,7 @@ onBeforeUnmount(() => {
     <Head title="Dashboard" />
     <FileLayout>
         <CreateFolderModal v-model="createFolderModal" />
+        <RenameFileModal v-model="renameFileModal" :file="fileToRename" />
         <div class="flex h-full min-h-0 flex-col">
             <div
                 class="flex shrink-0 items-center justify-between border-b bg-white px-4 dark:bg-gray-800"
@@ -362,57 +372,63 @@ onBeforeUnmount(() => {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr
+                            <FileContextMenu
                                 v-for="(file, index) of allFiles.data"
                                 :key="file.id"
-                                :data-index="index"
-                                :data-key="file.id"
-                                @dblclick="openFolder(file)"
-                                @click="
-                                    toggleFileSelect(
-                                        file,
-                                        index,
-                                        $event.shiftKey,
-                                    )
-                                "
-                                class="cursor-pointer transition duration-300 ease-in-out select-none not-last:border-b"
-                                :class="
-                                    selected[file.id] || allSelected
-                                        ? 'bg-blue-50 hover:bg-blue-100'
-                                        : 'bg-white hover:bg-gray-100 dark:border-b-gray-600 dark:bg-gray-800'
-                                "
+                                @rename="showRenameModal(file)"
+                                @create-folder="showCreateFolderModal"
                             >
-                                <td
-                                    class="w-4 items-center gap-2 py-4 ps-6 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                <tr
+                                    :data-index="index"
+                                    :data-key="file.id"
+                                    @dblclick="openFolder(file)"
+                                    @click="
+                                        toggleFileSelect(
+                                            file,
+                                            index,
+                                            $event.shiftKey,
+                                        )
+                                    "
+                                    class="cursor-pointer transition duration-300 ease-in-out select-none not-last:border-b"
+                                    :class="
+                                        selected[file.id] || allSelected
+                                            ? 'bg-blue-50 hover:bg-blue-100'
+                                            : 'bg-white hover:bg-gray-100 dark:border-b-gray-600 dark:bg-gray-800'
+                                    "
                                 >
-                                    <Checkbox
-                                        :model-value="
-                                            allSelected || !!selected[file.id]
-                                        "
-                                    />
-                                </td>
-                                <td
-                                    class="inline-flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
-                                >
-                                    <FileIcon :file="file"></FileIcon>
-                                    {{ file.name }}
-                                </td>
-                                <td
-                                    class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
-                                >
-                                    {{ file.owner }}
-                                </td>
-                                <td
-                                    class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
-                                >
-                                    {{ file.updated_at }}
-                                </td>
-                                <td
-                                    class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
-                                >
-                                    {{ file.size }}
-                                </td>
-                            </tr>
+                                    <td
+                                        class="w-4 items-center gap-2 py-4 ps-6 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                    >
+                                        <Checkbox
+                                            :model-value="
+                                                allSelected ||
+                                                !!selected[file.id]
+                                            "
+                                        />
+                                    </td>
+                                    <td
+                                        class="inline-flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                    >
+                                        <FileIcon :file="file"></FileIcon>
+                                        {{ file.name }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                    >
+                                        {{ file.owner }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                    >
+                                        {{ file.updated_at }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                    >
+                                        {{ file.size }}
+                                    </td>
+                                </tr>
+                            </FileContextMenu>
                         </tbody>
                     </table>
 
