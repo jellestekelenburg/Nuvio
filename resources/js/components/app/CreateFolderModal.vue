@@ -63,9 +63,7 @@ function closeModal() {
     >
         <DialogContent class="rounded-xl sm:max-w-md">
             <DialogHeader>
-                <DialogTitle class="text-zinc-800"
-                    >Create New Folder</DialogTitle
-                >
+                <DialogTitle class="text-zinc-800">Create Folder</DialogTitle>
             </DialogHeader>
 
             <div class="mt-2">

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Form, Head, Link, usePage } from '@inertiajs/vue3';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
+import UserStorage from '@/components/app/global/UserStorage.vue';
 import DeleteUser from '@/components/DeleteUser.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -43,6 +44,11 @@ const user = page.props.auth.user;
                     variant="small"
                     title="Profile information"
                     description="Update your name and email address"
+                />
+
+                <UserStorage
+                    class="w-full max-w-none! px-0!"
+                    :always-open="true"
                 />
 
                 <Form

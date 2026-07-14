@@ -19,7 +19,7 @@ const emit = defineEmits<{
         @select="emit('create-folder-select')"
         class="cursor-pointer rounded-sm p-2 text-sm hover:bg-gray-100"
     >
-        Create New Folder
+        Create Folder
     </component>
 
     <div class="mb-2 border-b border-gray-200 pb-2 dark:border-gray-700"></div>

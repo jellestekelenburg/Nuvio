@@ -91,7 +91,7 @@ function formatBytes(bytes: number): string {
                 class="upload-bar relative my-3 h-1.5 w-full overflow-hidden rounded-full"
             >
                 <div
-                    class="absolute top-0 left-0 z-1 h-1.5 rounded-full bg-blue-500 transition-all duration-500 ease-in-out"
+                    class="absolute top-0 left-0 z-1 h-1.5 rounded-full bg-orange-500 transition-all duration-500 ease-in-out"
                     :style="{ width: `${summary.average_progress}%` }"
                 ></div>
             </div>

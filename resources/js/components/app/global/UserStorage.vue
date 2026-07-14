@@ -2,6 +2,18 @@
 import axios from 'axios';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { showErrorNotification } from '@/composables/event-bus';
+import { cn } from '@/lib/utils';
+
+const props = withDefaults(
+    defineProps<{
+        alwaysOpen?: boolean;
+    }>(),
+    {
+        alwaysOpen: false,
+    },
+);
+
+console.log(props.alwaysOpen);
 
 type StorageData = {
     used_bytes: number;
@@ -83,7 +95,14 @@ onUnmounted(() => {
         </div>
         <div
             class="relative z-0 flex justify-between text-xs transition-all"
-            :class="!showStorageDetails ? 'h-0 opacity-0' : 'h-4 opacity-100'"
+            :class="
+                cn(
+                    !showStorageDetails
+                        ? 'h-0 opacity-0'
+                        : 'mt-1 h-4 opacity-100',
+                    props.alwaysOpen && 'mt-1! h-4! opacity-100!',
+                )
+            "
         >
             <p>{{ storage.used_formatted }}</p>
             <p>{{ storage.max_formatted }}</p>
