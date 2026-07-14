@@ -97,6 +97,7 @@ async function uploadFiles(files: FileList | File[]) {
         uploadState.value = 'failed';
         uploadFinishedAt.value = new Date().toISOString();
         handleError(error);
+        resetUploadPanel();
     }
 }
 

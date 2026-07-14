@@ -16,7 +16,7 @@ function onChange(ev: events) {
         :is="props.itemComponent"
         class="relative cursor-pointer rounded-sm p-2 text-sm hover:bg-gray-100"
     >
-        Upload New Folder
+        Upload Folder
 
         <input
             @change="onChange"
