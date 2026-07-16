@@ -23,6 +23,9 @@ class UploadMultipartService
         private readonly AvailableNodeNameService $availableNodeNameService,
     ) {}
 
+    /**
+     * @return array{body: array<string, mixed>, status: int}
+     */
     public function initiate(
         User $user,
         string $uploadId,
@@ -30,7 +33,7 @@ class UploadMultipartService
     ): array {
         $plan = Cache::get("upload-plan:{$user->id}:{$uploadId}");
 
-        if (! $plan) {
+        if (! is_array($plan)) {
             return $this->result([
                 'ok' => false,
                 'code' => 'upload_plan_not_found',
@@ -46,8 +49,20 @@ class UploadMultipartService
             ], 409);
         }
 
-        $plannedFile = collect($plan['multipart_files'] ?? [])
-            ->firstWhere('upload_file_id', $uploadFileId);
+        $plannedFile = null;
+        $multipartFiles = $plan['multipart_files'] ?? [];
+
+        if (is_array($multipartFiles)) {
+            foreach ($multipartFiles as $candidate) {
+                if (
+                    is_array($candidate)
+                    && ($candidate['upload_file_id'] ?? null) === $uploadFileId
+                ) {
+                    $plannedFile = $candidate;
+                    break;
+                }
+            }
+        }
 
         if (! $plannedFile) {
             return $this->result([
@@ -135,6 +150,10 @@ class UploadMultipartService
         ), 201);
     }
 
+    /**
+     * @param  array<int, mixed>  $partNumbers
+     * @return array{body: array<string, mixed>, status: int}
+     */
     public function signParts(
         User $user,
         string $uploadId,
@@ -164,7 +183,7 @@ class UploadMultipartService
         }
 
         $partNumbers = collect($partNumbers)
-            ->map(fn ($partNumber) => (int) $partNumber)
+            ->map(fn (mixed $partNumber): int => (int) $partNumber)
             ->values();
 
         if ($partNumbers->count() > self::MAX_SIGNED_PARTS_PER_REQUEST) {
@@ -218,6 +237,10 @@ class UploadMultipartService
         ]);
     }
 
+    /**
+     * @param  array<int, mixed>  $parts
+     * @return array{body: array<string, mixed>, status: int}
+     */
     public function complete(
         User $user,
         string $uploadId,
@@ -248,9 +271,10 @@ class UploadMultipartService
         }
 
         $normalizedParts = collect($parts)
-            ->map(fn (array $part) => [
-                'part_number' => (int) $part['part_number'],
-                'etag' => trim((string) $part['etag']),
+            ->filter(fn (mixed $part): bool => is_array($part))
+            ->map(fn (array $part): array => [
+                'part_number' => (int) ($part['part_number'] ?? 0),
+                'etag' => trim((string) ($part['etag'] ?? '')),
             ])
             ->sortBy('part_number')
             ->values();
@@ -268,7 +292,7 @@ class UploadMultipartService
         $this->s3MultipartUploadService->completeMultiPartUpload(
             key: $upload->s3_key,
             s3UploadId: $upload->s3_upload_id,
-            parts: $normalizedParts->all(),
+            parts: array_values($normalizedParts->all()),
         );
 
         if ($this->s3MultipartUploadService->objectSize($upload->s3_key) !== $upload->size) {
@@ -332,6 +356,9 @@ class UploadMultipartService
         ]);
     }
 
+    /**
+     * @return array{body: array<string, mixed>, status: int}
+     */
     public function abort(
         User $user,
         string $uploadId,
@@ -389,6 +416,10 @@ class UploadMultipartService
         ]);
     }
 
+    /**
+     * @param  array<string, mixed>  $plan
+     * @return array<string, mixed>
+     */
     private function uploadStateBody(MultipartUpload $upload, array $plan): array
     {
         return [
@@ -459,6 +490,10 @@ class UploadMultipartService
         return "{$safeFilename}.{$safeExtension}";
     }
 
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array{body: array<string, mixed>, status: int}
+     */
     private function result(array $body, int $status = 200): array
     {
         return [
@@ -467,13 +502,22 @@ class UploadMultipartService
         ];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function completedFileBody(MultipartUpload $upload): array
     {
+        $file = $upload->completedFile;
+
+        if (! $file instanceof File) {
+            throw new \LogicException('A completed upload must reference its stored file.');
+        }
+
         return [
             'client_id' => $upload->client_id,
-            'file_id' => $upload->completedFile->id,
-            'name' => $upload->completedFile->name,
-            'size' => $upload->completedFile->size,
+            'file_id' => $file->id,
+            'name' => $file->name,
+            'size' => $file->size,
             'status' => 'done',
         ];
     }

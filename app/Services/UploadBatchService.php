@@ -22,6 +22,7 @@ class UploadBatchService
      *
      * @param  array<int, UploadedFile>  $files
      * @param  array<int, string>  $clientIds
+     * @return array<string, mixed>
      */
     public function store(
         User $user,
@@ -32,7 +33,7 @@ class UploadBatchService
     ): array {
         $plan = Cache::get("upload-plan:{$user->id}:{$uploadId}");
 
-        if (! $plan) {
+        if (! is_array($plan)) {
             return [
                 'ok' => false,
                 'code' => 'upload_plan_not_found',
@@ -48,8 +49,20 @@ class UploadBatchService
             ];
         }
 
-        $plannedBatch = collect($plan['small_file_batches'] ?? [])
-            ->firstWhere('batch_id', $batchId);
+        $plannedBatch = null;
+        $plannedBatches = $plan['small_file_batches'] ?? [];
+
+        if (is_array($plannedBatches)) {
+            foreach ($plannedBatches as $candidate) {
+                if (
+                    is_array($candidate)
+                    && ($candidate['batch_id'] ?? null) === $batchId
+                ) {
+                    $plannedBatch = $candidate;
+                    break;
+                }
+            }
+        }
 
         if (! $plannedBatch) {
             return [
@@ -72,13 +85,26 @@ class UploadBatchService
             ];
         }
 
-        $plannedFiles = collect($plan['files'] ?? [])->keyBy('client_id');
+        $plannedFiles = [];
+        $planFiles = $plan['files'] ?? [];
+
+        if (is_array($planFiles)) {
+            foreach ($planFiles as $plannedFile) {
+                if (
+                    is_array($plannedFile)
+                    && isset($plannedFile['client_id'])
+                    && is_string($plannedFile['client_id'])
+                ) {
+                    $plannedFiles[$plannedFile['client_id']] = $plannedFile;
+                }
+            }
+        }
 
         foreach ($files as $index => $file) {
-            $plannedFile = $plannedFiles->get($clientIds[$index]);
+            $plannedFile = $plannedFiles[$clientIds[$index]] ?? null;
 
             if (
-                ! $plannedFile ||
+                ! is_array($plannedFile) ||
                 (int) $file->getSize() !== (int) $plannedFile['size']
             ) {
                 return [
@@ -115,7 +141,7 @@ class UploadBatchService
 
         foreach ($files as $index => $file) {
             $clientId = $clientIds[$index];
-            $plannedFile = $plannedFiles->get($clientId);
+            $plannedFile = $plannedFiles[$clientId];
 
             $model = DB::transaction(function () use (
                 $user,

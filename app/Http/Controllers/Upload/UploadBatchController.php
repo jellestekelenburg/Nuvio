@@ -17,7 +17,7 @@ class UploadBatchController extends Controller
     ): JsonResponse {
 
         $result = $service->store(
-            user: $request->user(),
+            user: $this->authenticatedUser($request),
             uploadId: $uploadId,
             batchId: $batchId,
             files: $request->file('files', []),

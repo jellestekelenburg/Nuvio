@@ -23,7 +23,7 @@ class PasswordController extends Controller
      */
     public function update(PasswordUpdateRequest $request): RedirectResponse
     {
-        $request->user()->update([
+        $this->authenticatedUser($request)->update([
             'password' => $request->password,
         ]);
 

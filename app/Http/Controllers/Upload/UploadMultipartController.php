@@ -19,7 +19,7 @@ class UploadMultipartController extends Controller
         string $uploadFileId,
     ): JsonResponse {
         $result = $service->initiate(
-            user: $request->user(),
+            user: $this->authenticatedUser($request),
             uploadId: $uploadId,
             uploadFileId: $uploadFileId,
         );
@@ -34,7 +34,7 @@ class UploadMultipartController extends Controller
         string $uploadFileId,
     ): JsonResponse {
         $result = $service->signParts(
-            user: $request->user(),
+            user: $this->authenticatedUser($request),
             uploadId: $uploadId,
             uploadFileId: $uploadFileId,
             partNumbers: $request->validated('parts')
@@ -50,7 +50,7 @@ class UploadMultipartController extends Controller
         string $uploadFileId,
     ): JsonResponse {
         $result = $service->complete(
-            user: $request->user(),
+            user: $this->authenticatedUser($request),
             uploadId: $uploadId,
             uploadFileId: $uploadFileId,
             parts: $request->validated('parts')
@@ -66,7 +66,7 @@ class UploadMultipartController extends Controller
         string $uploadFileId,
     ): JsonResponse {
         $result = $service->abort(
-            user: $request->user(),
+            user: $this->authenticatedUser($request),
             uploadId: $uploadId,
             uploadFileId: $uploadFileId,
         );

@@ -48,6 +48,9 @@ final class UploadPlanService
      *
      * Planned names are provisional. The storage step checks availability
      * again while holding a lock on the final target directory.
+     *
+     * @param  array<int, array<string, mixed>>  $files
+     * @return array<string, mixed>
      */
     public function makePlan(User $user, array $files, ?int $parentId): array
     {
@@ -159,6 +162,9 @@ final class UploadPlanService
 
     /**
      * Group small planned files into bounded request batches.
+     *
+     * @param  iterable<int, array<string, mixed>>  $files
+     * @return list<array<string, mixed>>
      */
     private function makeSmallFileBatches(iterable $files): array
     {

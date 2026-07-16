@@ -33,7 +33,7 @@ class CreateNewUser implements CreatesNewUsers
 
         $file = new File;
         $file->name = $input['email'];
-        $file->is_folder = 1;
+        $file->is_folder = true;
         $file->created_by = $user->id;
         $file->updated_by = $user->id;
         $file->makeRoot()->save();

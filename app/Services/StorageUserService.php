@@ -7,6 +7,16 @@ use App\Models\User;
 use App\Support\SizeFormatter;
 use Illuminate\Support\Facades\Cache;
 
+/**
+ * @phpstan-type StorageStats array{
+ *     used_bytes: int,
+ *     max_bytes: int,
+ *     used_formatted: string,
+ *     max_formatted: string,
+ *     is_full: bool,
+ *     percentage: int|float
+ * }
+ */
 class StorageUserService
 {
     private function cacheKey(User $user): string
@@ -19,6 +29,9 @@ class StorageUserService
         Cache::forget($this->cacheKey($user));
     }
 
+    /**
+     * @return StorageStats
+     */
     private function makeStats(int $used, int $max): array
     {
         return [
@@ -31,12 +44,21 @@ class StorageUserService
         ];
     }
 
+    /**
+     * @return StorageStats
+     */
     public function getCachedOrRecalculate(User $user): array
     {
         $key = $this->cacheKey($user);
+        $cached = Cache::get($key);
 
-        if (Cache::has($key)) {
-            return Cache::get($key);
+        if (
+            is_array($cached)
+            && isset($cached['used_bytes'], $cached['max_bytes'])
+            && is_int($cached['used_bytes'])
+            && is_int($cached['max_bytes'])
+        ) {
+            return $this->makeStats($cached['used_bytes'], $cached['max_bytes']);
         }
 
         return $this->recalculate($user);
@@ -57,6 +79,9 @@ class StorageUserService
         Cache::put($this->cacheKey($user), $stats, now()->addMinutes(10));
     }
 
+    /**
+     * @return StorageStats
+     */
     public function recalculate(User $user): array
     {
         $used = (int) File::query()->withoutGlobalScopes()

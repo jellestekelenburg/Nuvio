@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\File;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use RuntimeException;
 
 class StoreUploadedFile
 {
@@ -18,6 +19,10 @@ class StoreUploadedFile
         string $name,
     ): File {
         $path = $file->store('/files'.$user->id);
+
+        if ($path === false) {
+            throw new RuntimeException('The uploaded file could not be stored.');
+        }
 
         $model = new File;
         $model->is_folder = false;

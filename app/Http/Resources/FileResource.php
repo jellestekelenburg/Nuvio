@@ -2,12 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Models\File;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use LogicException;
 
 class FileResource extends JsonResource
 {
-    public static $wrap = false;
+    public static $wrap = null;
 
     /**
      * Transform the resource into an array.
@@ -16,29 +18,39 @@ class FileResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $file = $this->file();
+
         return [
-            'id' => $this->id,
-            'name' => $this->name,
-            'path' => $this->path,
-            'parent_id' => $this->parent_id,
-            'is_folder' => $this->is_folder,
-            'mime' => $this->mime,
-            'size' => $this->getFileSize(),
-            'owner' => $this->owner,
+            'id' => $file->id,
+            'name' => $file->name,
+            'path' => $file->path,
+            'parent_id' => $file->parent_id,
+            'is_folder' => $file->is_folder,
+            'mime' => $file->mime,
+            'size' => $file->getFileSize(),
+            'owner' => $file->owner,
             'type' => $this->getFileType(),
-            'created_at' => $this->created_at->diffForHumans(),
-            'updated_at' => $this->updated_at->diffForHumans(),
-            'created_by' => $this->created_by,
-            'updated_by' => $this->updated_by,
-            'deleted_at' => $this->deleted_at,
+            'created_at' => $file->created_at?->diffForHumans(),
+            'updated_at' => $file->updated_at?->diffForHumans(),
+            'created_by' => $file->created_by,
+            'updated_by' => $file->updated_by,
+            'deleted_at' => $file->deleted_at,
         ];
     }
 
     private function getFileType(): string
     {
-        $path = $this->storage_path;
-        $pathParts = explode('.', $path);
+        $path = $this->file()->storage_path;
 
-        return end($pathParts);
+        return $path === null ? '' : pathinfo($path, PATHINFO_EXTENSION);
+    }
+
+    private function file(): File
+    {
+        if (! $this->resource instanceof File) {
+            throw new LogicException('FileResource requires an App\Models\File instance.');
+        }
+
+        return $this->resource;
     }
 }

@@ -2,9 +2,35 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property string $upload_id
+ * @property string $upload_file_id
+ * @property int $user_id
+ * @property int $parent_id
+ * @property string $client_id
+ * @property string $name
+ * @property string|null $relative_path
+ * @property string|null $content_type
+ * @property int $size
+ * @property int $part_size
+ * @property int $part_count
+ * @property int $reserved_bytes
+ * @property string $s3_key
+ * @property string $s3_upload_id
+ * @property string $status
+ * @property int|null $completed_file_id
+ * @property Carbon|null $initiated_at
+ * @property Carbon|null $completed_at
+ * @property Carbon|null $aborted_at
+ * @property-read User $user
+ * @property-read File $parent
+ * @property-read File|null $completedFile
+ */
 class MultipartUpload extends Model
 {
     public const string STATUS_INITIATED = 'initiated';
@@ -49,16 +75,25 @@ class MultipartUpload extends Model
         'aborted_at' => 'datetime',
     ];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * @return BelongsTo<File, $this>
+     */
     public function parent(): BelongsTo
     {
         return $this->belongsTo(File::class, 'parent_id');
     }
 
+    /**
+     * @return BelongsTo<File, $this>
+     */
     public function completedFile(): BelongsTo
     {
         return $this->belongsTo(File::class, 'completed_file_id');

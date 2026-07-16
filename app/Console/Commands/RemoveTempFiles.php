@@ -16,7 +16,7 @@ class RemoveTempFiles extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
         $this->removeFiles();
         $this->removeZips();
