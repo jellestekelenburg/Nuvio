@@ -20,6 +20,7 @@ import FileIcon from '@/components/app/FileIcon.vue';
 import RenameFileModal from '@/components/app/RenameFileModal.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { httpGet } from '@/composables/httpHelper';
+import { useFileSelection } from '@/composables/useFileSelection';
 import FileLayout from '@/layouts/FileLayout.vue';
 import type { File } from '@/lib/types';
 import { myFiles } from '@/routes';
@@ -27,7 +28,12 @@ import { myFiles } from '@/routes';
 type FileListItem = File;
 
 type Paginated<T> = {
-    links: any;
+    links: {
+        next: string | null;
+    };
+    meta: {
+        total: number;
+    };
     data: T[];
 };
 
@@ -71,19 +77,24 @@ const allFiles = ref({
     data: props.files.data,
     next: props.files.links.next,
 });
+
+const selectableFiles = computed(() => allFiles.value.data);
+const totalFiles = computed(() => props.files.meta.total);
+
+const {
+    selectAllState,
+    allSelected,
+    selectedIds,
+    isSelected,
+    toggle: toggleFileSelect,
+    clear: clearSelection,
+} = useFileSelection(selectableFiles, totalFiles);
+
 const isLoadingMore = ref(false);
-const allSelected = ref(false);
 const createFolderModal = ref(false);
 const renameFileModal = ref(false);
 const detailFileModal = ref(false);
 const selectedFile = ref<FileListItem | null>(null);
-const lastSelectedFile = ref(0);
-const selected = ref<Record<number, boolean>>({});
-const selectedIds = computed(() =>
-    Object.entries(selected.value)
-        .filter((a) => a[1])
-        .map((a) => a[0]),
-);
 const sort = computed(() => props.sort);
 
 const currentFolderId = computed(() => props.folder?.id ?? null);
@@ -102,8 +113,7 @@ function replaceFilesFromProps() {
         next: props.files.links.next,
     };
 
-    allSelected.value = false;
-    selected.value = {};
+    clearSelection();
 
     nextTick(loadMoreIfNeeded);
 }
@@ -144,61 +154,6 @@ function loadMoreIfNeeded() {
     }
 }
 
-function onSelectAllChange() {
-    allFiles.value.data.forEach((file) => {
-        selected.value[file.id] = allSelected.value;
-    });
-}
-
-function toggleFileSelect(
-    file: FileListItem,
-    index: number,
-    isShiftPressed: boolean,
-) {
-    selected.value[file.id] = !selected.value[file.id];
-
-    if (
-        isShiftPressed &&
-        lastSelectedFile.value !== index &&
-        index - lastSelectedFile.value !== -1 &&
-        index - lastSelectedFile.value !== 1
-    ) {
-        if (index - lastSelectedFile.value !== 1) {
-            const min = Math.min(index, lastSelectedFile.value);
-            const max = Math.max(index, lastSelectedFile.value);
-
-            for (let i = min; i < max; i++) {
-                const row = document.querySelector<HTMLElement>(
-                    `[data-index="${i}"]`,
-                );
-                const fileId = row?.dataset.key;
-                const numericFileId = Number(fileId);
-
-                if (numericFileId) {
-                    selected.value[numericFileId] = true;
-                }
-            }
-        }
-    }
-
-    if (!selected.value[file.id]) {
-        allSelected.value = false;
-    } else {
-        let checked = true;
-
-        for (const file of allFiles.value.data) {
-            if (!selected.value[file.id]) {
-                checked = false;
-                break;
-            }
-        }
-
-        allSelected.value = checked;
-    }
-
-    lastSelectedFile.value = index;
-}
-
 function toggleSort(column: SortColumn) {
     if (!column) {
         return;
@@ -228,8 +183,7 @@ function toggleSort(column: SortColumn) {
 }
 
 function onDelete() {
-    allSelected.value = false;
-    selected.value = {};
+    clearSelection();
 }
 
 function showCreateFolderModal() {
@@ -325,10 +279,7 @@ onBeforeUnmount(() => {
                                 <th
                                     class="sticky top-0 z-10 w-6 bg-gray-100 py-4 ps-6 text-start text-sm font-medium dark:bg-gray-700"
                                 >
-                                    <Checkbox
-                                        v-model="allSelected"
-                                        @update:model-value="onSelectAllChange"
-                                    >
+                                    <Checkbox v-model="selectAllState">
                                     </Checkbox>
                                 </th>
                                 <th
@@ -393,7 +344,7 @@ onBeforeUnmount(() => {
                                     "
                                     class="cursor-pointer transition duration-300 ease-in-out select-none not-last:border-b"
                                     :class="
-                                        selected[file.id] || allSelected
+                                        isSelected(file)
                                             ? 'bg-blue-50 hover:bg-blue-100'
                                             : 'bg-white hover:bg-gray-100 dark:border-b-gray-600 dark:bg-gray-800'
                                     "
@@ -402,10 +353,7 @@ onBeforeUnmount(() => {
                                         class="w-4 items-center gap-2 py-4 ps-6 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
                                     >
                                         <Checkbox
-                                            :model-value="
-                                                allSelected ||
-                                                !!selected[file.id]
-                                            "
+                                            :model-value="isSelected(file)"
                                         />
                                     </td>
                                     <td
