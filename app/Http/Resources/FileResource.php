@@ -24,7 +24,6 @@ class FileResource extends JsonResource
         return [
             'id' => $file->id,
             'name' => $file->name,
-            'path' => $file->path,
             'parent_id' => $file->parent_id,
             'is_folder' => $file->is_folder,
             'mime' => $file->mime,

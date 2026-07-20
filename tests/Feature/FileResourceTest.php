@@ -45,5 +45,6 @@ class FileResourceTest extends TestCase
         $this->assertSame('Ada Lovelace (me)', $data['details']['owner']);
         $this->assertSame('Ada Lovelace (me)', $data['details']['created_by']);
         $this->assertSame('Grace Hopper', $data['details']['updated_by']);
+        $this->assertArrayNotHasKey('path', $data);
     }
 }

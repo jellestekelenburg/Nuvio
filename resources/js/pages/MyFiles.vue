@@ -90,11 +90,11 @@ const currentFolderId = computed(() => props.folder?.id ?? null);
 let observer: IntersectionObserver | null = null;
 
 function openFolder(file: FileListItem): void {
-    if (!file.is_folder || !file.path) {
+    if (!file.is_folder) {
         return;
     }
 
-    router.visit(myFiles.get({ folder: file.path }));
+    router.visit(myFiles.get({ folder: file.id }));
 }
 function replaceFilesFromProps() {
     allFiles.value = {
@@ -211,7 +211,7 @@ function toggleSort(column: SortColumn) {
 
     router.get(
         myFiles.url(
-            props.folder?.path ? { folder: props.folder.path } : undefined,
+            props.folder?.parent_id ? { folder: props.folder.id } : undefined,
         ),
         {
             sortBy: column,

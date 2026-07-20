@@ -17,7 +17,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -42,7 +41,7 @@ class FileController extends Controller
 
     public function myFiles(
         Request $request,
-        ?string $folder = null,
+        ?int $folder = null,
     ): AnonymousResourceCollection|InertiaResponse {
         $user = $this->authenticatedUser($request);
         $sortableColumns = [
@@ -62,10 +61,12 @@ class FileController extends Controller
 
         $limit = $this->paginationLimit($request);
 
-        if ($folder) {
+        if ($folder !== null) {
             $folder = File::query()
+                ->whereKey($folder)
                 ->where('created_by', $user->id)
-                ->where('path', $folder)
+                ->where('is_folder', true)
+                ->whereNull('deleted_at')
                 ->firstOrFail();
         } else {
             $folder = $this->getRoot();
@@ -144,34 +145,8 @@ class FileController extends Controller
     public function rename(RenameFileRequest $request, File $file): RedirectResponse
     {
         $name = $request->validated('name');
-
-        DB::transaction(function () use ($file, $name): void {
-            $oldPath = $file->path;
-            $parent = $file->parent;
-
-            if (! $parent instanceof File) {
-                throw new LogicException('A root folder cannot be renamed.');
-            }
-
-            $newPath = (! $parent->isRoot() ? $parent->path.'/' : '').Str::slug($name);
-
-            $file->name = $name;
-            $file->path = $newPath;
-            $file->save();
-
-            if ($file->is_folder && $oldPath !== null && $oldPath !== $newPath) {
-                foreach ($file->descendants()->get() as $descendant) {
-                    if (! $descendant instanceof File) {
-                        continue;
-                    }
-
-                    if ($descendant->path && str_starts_with($descendant->path, $oldPath.'/')) {
-                        $descendant->path = $newPath.substr($descendant->path, strlen($oldPath));
-                        $descendant->save();
-                    }
-                }
-            }
-        });
+        $file->name = $name;
+        $file->save();
 
         return redirect()->back();
     }
@@ -276,7 +251,9 @@ class FileController extends Controller
             }
         }
 
-        return to_route('myFiles', ['folder' => $parent->path]);
+        return $parent->isRoot()
+            ? to_route('myFiles')
+            : to_route('myFiles', ['folder' => $parent->id]);
     }
 
     /**

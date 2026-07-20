@@ -48,20 +48,29 @@ class FileRenameTest extends TestCase
         $this->assertSame('.env.local', $file->fresh()->name);
     }
 
-    public function test_renaming_a_folder_updates_descendant_paths(): void
+    public function test_renaming_a_folder_keeps_its_subtree_and_storage_paths_unchanged(): void
     {
         [$user, $root] = $this->userWithRoot();
         $folder = $this->child($root, 'Old Folder', true);
         $nested = $this->child($folder, 'Nested Folder', true);
         $file = $this->child($nested, 'notes.txt');
+        $file->storage_path = 'files/'.$user->id.'/stored-object';
+        $file->save();
+
+        $folderBounds = [$folder->fresh()->_lft, $folder->fresh()->_rgt];
+        $nestedBounds = [$nested->fresh()->_lft, $nested->fresh()->_rgt];
 
         $this->actingAs($user)
             ->patch(route('file.rename', $folder), ['name' => 'New Folder'])
             ->assertSessionHasNoErrors();
 
-        $this->assertSame('new-folder', $folder->fresh()->path);
-        $this->assertSame('new-folder/nested-folder', $nested->fresh()->path);
-        $this->assertSame('new-folder/nested-folder/notestxt', $file->fresh()->path);
+        $this->assertSame('New Folder', $folder->fresh()->name);
+        $this->assertSame($folderBounds, [$folder->fresh()->_lft, $folder->fresh()->_rgt]);
+        $this->assertSame($nestedBounds, [$nested->fresh()->_lft, $nested->fresh()->_rgt]);
+        $this->assertSame($folder->id, $nested->fresh()->parent_id);
+        $this->assertSame($nested->id, $file->fresh()->parent_id);
+        $this->assertSame('files/'.$user->id.'/stored-object', $file->fresh()->storage_path);
+        $this->assertFalse(File::query()->isBroken());
     }
 
     private function userWithRoot(): array

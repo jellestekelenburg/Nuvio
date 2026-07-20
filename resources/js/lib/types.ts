@@ -1,7 +1,6 @@
 export type File = {
     id: number;
     name: string;
-    path: string | null;
     parent_id: number | null;
     is_folder: boolean;
     mime: string | null;

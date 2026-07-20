@@ -12,13 +12,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Kalnoy\Nestedset\NodeTrait;
 
 /**
  * @property int $id
  * @property string $name
- * @property string|null $path
  * @property string|null $storage_path
  * @property int|null $parent_id
  * @property bool $is_folder
@@ -42,7 +40,6 @@ class File extends Model
 
     protected $fillable = [
         'name',
-        'path',
         'storage_path',
         'parent_id',
         'is_folder',
@@ -141,18 +138,5 @@ class File extends Model
                 }
             }
         }
-    }
-
-    protected static function boot(): void
-    {
-        parent::boot();
-
-        static::creating(function (File $model): void {
-            if (! $model->parent) {
-                return;
-            }
-
-            $model->path = (! $model->parent->isRoot() ? $model->parent->path.'/' : '').Str::slug($model->name);
-        });
     }
 }
