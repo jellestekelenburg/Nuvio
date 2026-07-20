@@ -14,7 +14,7 @@ function onChange(ev: events) {
     <component
         component
         :is="props.itemComponent"
-        class="relative cursor-pointer rounded-sm p-2 text-sm hover:bg-gray-100"
+        class="relative cursor-pointer rounded-sm p-2 text-sm hover:bg-gray-100 border border-transparent hover:border-gray-300"
     >
         Upload Folder
 

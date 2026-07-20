@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\File;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use LogicException;
@@ -35,6 +36,13 @@ class FileResource extends JsonResource
             'created_by' => $file->created_by,
             'updated_by' => $file->updated_by,
             'deleted_at' => $file->deleted_at,
+            'details' => [
+                'owner' => $this->userDisplayName($file->user, $request),
+                'created_at' => $file->created_at?->toIso8601String(),
+                'updated_at' => $file->updated_at?->toIso8601String(),
+                'created_by' => $this->userDisplayName($file->user, $request),
+                'updated_by' => $this->userDisplayName($file->updater, $request),
+            ],
         ];
     }
 
@@ -43,6 +51,15 @@ class FileResource extends JsonResource
         $path = $this->file()->storage_path;
 
         return $path === null ? '' : pathinfo($path, PATHINFO_EXTENSION);
+    }
+
+    private function userDisplayName(?User $user, Request $request): ?string
+    {
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        return $user->name.($user->is($request->user()) ? ' (me)' : '');
     }
 
     private function file(): File

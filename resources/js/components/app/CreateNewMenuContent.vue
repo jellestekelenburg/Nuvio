@@ -17,12 +17,12 @@ const emit = defineEmits<{
     <component
         :is="props.itemComponent"
         @select="emit('create-folder-select')"
-        class="cursor-pointer rounded-sm p-2 text-sm hover:bg-gray-100"
+        class="cursor-pointer rounded-sm p-2 text-sm hover:bg-gray-100  border border-transparent hover:border-gray-300"
     >
         Create Folder
     </component>
 
-    <div class="mb-2 border-b border-gray-200 pb-2 dark:border-gray-700"></div>
+    <div class="my-1 border-b border-gray-200 dark:border-gray-700"></div>
 
     <FileUploadMenuItem :item-component="props.itemComponent" />
     <FolderUploadMenuItem :item-component="props.itemComponent" />

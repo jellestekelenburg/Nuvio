@@ -30,6 +30,7 @@ use Kalnoy\Nestedset\NodeTrait;
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
  * @property-read User|null $user
+ * @property-read User|null $updater
  * @property-read File|null $parent
  * @property-read Collection<int, File> $children
  * @property-read Collection<int, File> $ancestors
@@ -62,6 +63,14 @@ class File extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function updater(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
     /**

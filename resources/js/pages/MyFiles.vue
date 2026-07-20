@@ -15,23 +15,16 @@ import CreateNewDropdown from '@/components/app/CreateNewDropdown.vue';
 import DeleteFilesButton from '@/components/app/DeleteFilesButton.vue';
 import DownloadFilesButton from '@/components/app/DownloadFilesButton.vue';
 import FileContextMenu from '@/components/app/FileContextMenu.vue';
+import FileDetailsModal from '@/components/app/FileDetailsModal.vue';
 import FileIcon from '@/components/app/FileIcon.vue';
 import RenameFileModal from '@/components/app/RenameFileModal.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { httpGet } from '@/composables/httpHelper';
 import FileLayout from '@/layouts/FileLayout.vue';
+import type { File } from '@/lib/types';
 import { myFiles } from '@/routes';
 
-type FileListItem = {
-    id: number;
-    name: string;
-    parent_id: number | null;
-    owner: string;
-    updated_at: string | null;
-    size: string | null;
-    is_folder: boolean;
-    path: string | null;
-};
+type FileListItem = File;
 
 type Paginated<T> = {
     links: any;
@@ -82,7 +75,8 @@ const isLoadingMore = ref(false);
 const allSelected = ref(false);
 const createFolderModal = ref(false);
 const renameFileModal = ref(false);
-const fileToRename = ref<FileListItem | null>(null);
+const detailFileModal = ref(false);
+const selectedFile = ref<FileListItem | null>(null);
 const lastSelectedFile = ref(0);
 const selected = ref<Record<number, boolean>>({});
 const selectedIds = computed(() =>
@@ -243,8 +237,13 @@ function showCreateFolderModal() {
 }
 
 function showRenameModal(file: FileListItem) {
-    fileToRename.value = file;
+    selectedFile.value = file;
     renameFileModal.value = true;
+}
+
+function showDetailModal(file: FileListItem) {
+    selectedFile.value = file;
+    detailFileModal.value = true;
 }
 
 watch(
@@ -293,7 +292,9 @@ onBeforeUnmount(() => {
     <Head title="Dashboard" />
     <FileLayout>
         <CreateFolderModal v-model="createFolderModal" />
-        <RenameFileModal v-model="renameFileModal" :file="fileToRename" />
+        <FileDetailsModal v-model="detailFileModal" :file="selectedFile" />
+        <RenameFileModal v-model="renameFileModal" :file="selectedFile" />
+
         <div class="flex h-full min-h-0 flex-col">
             <div
                 class="flex shrink-0 items-center justify-between border-b bg-white px-4 dark:bg-gray-800"
@@ -376,6 +377,7 @@ onBeforeUnmount(() => {
                                 v-for="(file, index) of allFiles.data"
                                 :key="file.id"
                                 @rename="showRenameModal(file)"
+                                @details="showDetailModal(file)"
                                 @create-folder="showCreateFolderModal"
                             >
                                 <tr

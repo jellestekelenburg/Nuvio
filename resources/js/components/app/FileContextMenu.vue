@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SquarePen } from 'lucide-vue-next';
+import { SquarePen, InfoIcon } from 'lucide-vue-next';
 import {
     ContextMenuContent,
     ContextMenuItem,
@@ -11,10 +11,13 @@ import CreateNewMenuContent from './CreateNewMenuContent.vue';
 
 const emit = defineEmits<{
     (event: 'rename'): void;
+    (event: 'details'): void;
     (event: 'create-folder'): void;
 }>();
 const isOpen = ref(false);
-const pendingAction = ref<'rename' | 'create-folder' | null>(null);
+const pendingAction = ref<'rename' | 'create-folder' | 'details' | null>(
+    null,
+);
 
 watch(isOpen, (open) => {
     if (open || !pendingAction.value) return;
@@ -44,11 +47,19 @@ watch(isOpen, (open) => {
             ></div>
 
             <ContextMenuItem
-                class="flex cursor-pointer items-center gap-2 rounded-sm p-2 text-sm outline-none hover:bg-gray-100 focus:bg-gray-100 dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700"
+                class="flex cursor-pointer items-center gap-2 rounded-sm p-2 text-sm outline-none hover:bg-gray-100 border border-transparent hover:border-gray-300 focus:bg-gray-100 dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700"
                 @select="pendingAction = 'rename'"
             >
                 <SquarePen class="size-4" />
                 Rename
+            </ContextMenuItem>
+
+            <ContextMenuItem
+                class="flex cursor-pointer items-center gap-2 rounded-sm p-2 text-sm outline-none hover:bg-gray-100 border border-transparent hover:border-gray-300 focus:bg-gray-100 dark:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700"
+                @select="pendingAction = 'details'"
+            >
+                <InfoIcon class="size-4"/>
+                Details
             </ContextMenuItem>
         </ContextMenuContent>
     </ContextMenuRoot>

@@ -72,6 +72,7 @@ class FileController extends Controller
         }
 
         $files = File::query()
+            ->with(['user:id,name', 'updater:id,name'])
             ->where('parent_id', $folder->id)
             ->where('created_by', $user->id)
             ->orderBy('is_folder', 'desc')
@@ -91,7 +92,10 @@ class FileController extends Controller
             'direction' => $sortDirection,
         ];
 
-        $ancestors = FileResource::collection([...$folder->ancestors, $folder]);
+        $ancestorsAndFolder = $folder->ancestors->push($folder);
+        $ancestorsAndFolder->loadMissing(['user:id,name', 'updater:id,name']);
+
+        $ancestors = FileResource::collection($ancestorsAndFolder);
         $folder = new FileResource($folder);
 
         return Inertia::render('MyFiles', compact('files', 'folder', 'ancestors', 'sort'));
@@ -103,6 +107,7 @@ class FileController extends Controller
         $limit = $this->paginationLimit($request);
 
         $files = File::onlyTrashed()
+            ->with(['user:id,name', 'updater:id,name'])
             ->where('created_by', $user->id)
             ->orderBy('is_folder', 'desc')
             ->orderBy('files.deleted_at', 'desc')
