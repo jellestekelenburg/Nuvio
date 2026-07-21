@@ -17,7 +17,7 @@ const emit = defineEmits<{
     <component
         :is="props.itemComponent"
         @select="emit('create-folder-select')"
-        class="cursor-pointer rounded-sm p-2 text-sm hover:bg-gray-100  border border-transparent hover:border-gray-300"
+        class="cursor-pointer rounded-sm border border-transparent p-2 text-sm hover:border-gray-300 hover:bg-gray-100"
     >
         Create Folder
     </component>
