@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\File;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -19,6 +20,9 @@ class RenameFileRequest extends FormRequest
             && $file->isOwnedBy($this->user()?->id);
     }
 
+    /**
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
     public function rules(): array
     {
         /** @var File $file */
@@ -57,6 +61,9 @@ class RenameFileRequest extends FormRequest
         ];
     }
 
+    /**
+     * @return list<callable(Validator): void>
+     */
     public function after(): array
     {
         return [function (Validator $validator): void {

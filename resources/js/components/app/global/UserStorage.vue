@@ -13,8 +13,6 @@ const props = withDefaults(
     },
 );
 
-console.log(props.alwaysOpen);
-
 type StorageData = {
     used_bytes: number;
     max_bytes: number;

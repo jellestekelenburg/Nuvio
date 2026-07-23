@@ -30,6 +30,9 @@ final class S3MultipartUploadService
         }
     }
 
+    /**
+     * @param  array<string, int|string>  $metadata
+     */
     public function createMultipartUpload(string $key, ?string $contentType, array $metadata = []): string
     {
         $args = [
@@ -70,6 +73,9 @@ final class S3MultipartUploadService
         return (string) $request->getUri();
     }
 
+    /**
+     * @param  list<array{part_number: int|string, etag: string}>  $parts
+     */
     public function completeMultiPartUpload(string $key, string $s3UploadId, array $parts): void
     {
         $this->client->completeMultipartUpload([

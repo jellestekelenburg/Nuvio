@@ -10,12 +10,16 @@ type FileListItem = {
     updated_at: string | null;
     size: string | null;
     is_folder: boolean;
-    path: string | null;
 };
 
-const props = defineProps<{
-    ancestors?: { data: FileListItem[] };
-}>();
+const props = withDefaults(
+    defineProps<{
+        ancestors?: { data: FileListItem[] };
+    }>(),
+    {
+        ancestors: () => ({ data: [] }),
+    },
+);
 </script>
 
 <template>
@@ -55,9 +59,7 @@ const props = defineProps<{
                         />
                     </svg>
                     <Link
-                        :href="
-                            ans.path ? myFiles({ folder: ans.path }) : myFiles()
-                        "
+                        :href="myFiles({ folder: ans.id })"
                         class="ml-1 cursor-pointer text-sm font-medium text-gray-700 hover:text-blue-600 md:ml-2 dark:text-gray-400 dark:hover:text-white"
                     >
                         {{ ans.name }}

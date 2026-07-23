@@ -14,7 +14,7 @@ Route::get('/', function () {
 Route::controller(FileController::class)
     ->middleware(['auth', 'verified'])->group(function () {
         Route::get('/my-files/{folder?}', 'myFiles')
-            ->where('folder', '(.*)')
+            ->whereNumber('folder')
             ->name('myFiles');
     });
 

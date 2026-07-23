@@ -18,7 +18,6 @@ type FileListItem = {
     updated_at: string | null;
     size: string | null;
     is_folder: boolean;
-    path: string | null;
 };
 
 type Paginated<T> = {
@@ -237,11 +236,6 @@ onBeforeUnmount(() => {
                                 <th
                                     class="sticky top-0 z-10 bg-gray-100 px-6 py-4 text-start text-sm font-medium text-gray-900 dark:bg-gray-700 dark:text-white"
                                 >
-                                    Path
-                                </th>
-                                <th
-                                    class="sticky top-0 z-10 bg-gray-100 px-6 py-4 text-start text-sm font-medium text-gray-900 dark:bg-gray-700 dark:text-white"
-                                >
                                     Size
                                 </th>
                             </tr>
@@ -280,11 +274,6 @@ onBeforeUnmount(() => {
                                 >
                                     <FileIcon :file="file"></FileIcon>
                                     {{ file.name }}
-                                </td>
-                                <td
-                                    class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
-                                >
-                                    {{ file.path }}
                                 </td>
                                 <td
                                     class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"

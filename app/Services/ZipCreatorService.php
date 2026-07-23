@@ -2,12 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ZipCreatorService
 {
-    public function createZip($files): string
+    /**
+     * @param  iterable<File>  $files
+     */
+    public function createZip(iterable $files): string
     {
         $publicDisk = Storage::disk('public');
         $zipPath = 'zip/'.Str::random().'.zip';
@@ -27,8 +31,16 @@ class ZipCreatorService
         return $publicDisk->url($zipPath);
     }
 
-    private function addFilesToZip(\ZipArchive $zip, iterable $files, string $ancestors = '', array &$temporaryFiles = []): void
-    {
+    /**
+     * @param  iterable<File>  $files
+     * @param  list<string>  $temporaryFiles
+     */
+    private function addFilesToZip(
+        \ZipArchive $zip,
+        iterable $files,
+        string $ancestors = '',
+        array &$temporaryFiles = [],
+    ): void {
         foreach ($files as $file) {
             if ($file->is_folder) {
                 $this->addFilesToZip($zip, $file->children, $ancestors.$file->name.'/', $temporaryFiles);
@@ -83,10 +95,13 @@ class ZipCreatorService
         return $temporaryFile;
     }
 
+    /**
+     * @param  list<string>  $temporaryFiles
+     */
     private function cleanupTemporaryFiles(array $temporaryFiles): void
     {
         foreach ($temporaryFiles as $temporaryFile) {
-            if (is_string($temporaryFile) && is_file($temporaryFile)) {
+            if (is_file($temporaryFile)) {
                 @unlink($temporaryFile);
             }
         }

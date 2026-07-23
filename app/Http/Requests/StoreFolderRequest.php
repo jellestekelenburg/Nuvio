@@ -20,8 +20,9 @@ class StoreFolderRequest extends ParentIdBaseRequest
      */
     public function rules(): array
     {
-        $parentId = $this->parent?->id
-            ?? File::query()
+        $parentId = $this->parent instanceof File
+            ? $this->parent->id
+            : File::query()
                 ->where('created_by', Auth::id())
                 ->whereIsRoot()
                 ->value('id');

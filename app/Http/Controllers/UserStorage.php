@@ -2,22 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use AllowDynamicProperties;
 use App\Services\StorageUserService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 
-#[AllowDynamicProperties]
 class UserStorage extends Controller
 {
-    public function __construct(StorageUserService $storageService)
-    {
-        $this->storageService = $storageService;
-    }
+    public function __construct(
+        private readonly StorageUserService $storageService,
+    ) {}
 
-    public function __invoke(): JsonResponse
+    public function __invoke(Request $request): JsonResponse
     {
-        $storage = $this->storageService->getCachedOrRecalculate(Auth::user());
+        $storage = $this->storageService->getCachedOrRecalculate(
+            $this->authenticatedUser($request),
+        );
 
         return response()->json($storage);
     }
