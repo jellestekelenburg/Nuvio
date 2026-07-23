@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileMoveController;
+use App\Http\Controllers\FolderBrowserController;
 use App\Http\Controllers\Upload\UploadBatchController;
 use App\Http\Controllers\Upload\UploadMultipartController;
 use App\Http\Controllers\Upload\UploadPlanController;
@@ -14,6 +15,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('api.storage');
 
     Route::patch('/file/move', FileMoveController::class)->name('file.move');
+
+    Route::get('/api/folders', FolderBrowserController::class)
+        ->middleware('throttle:120,1')
+        ->name('api.folders.index');
 
     // Step 1: return one upload plan for the complete frontend selection.
     Route::post('/api/uploads/plan', UploadPlanController::class)

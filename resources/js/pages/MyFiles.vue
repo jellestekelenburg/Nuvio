@@ -17,6 +17,7 @@ import DownloadFilesButton from '@/components/app/DownloadFilesButton.vue';
 import FileContextMenu from '@/components/app/FileContextMenu.vue';
 import FileDetailsModal from '@/components/app/FileDetailsModal.vue';
 import FileIcon from '@/components/app/FileIcon.vue';
+import MoveFilesButton from '@/components/app/MoveFilesButton.vue';
 import RenameFileModal from '@/components/app/RenameFileModal.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { httpGet } from '@/composables/httpHelper';
@@ -38,6 +39,7 @@ type Paginated<T> = {
 };
 
 type SortColumn = 'name' | 'updated_at' | 'size' | null;
+type ActiveSortColumn = Exclude<SortColumn, null>;
 type SortDirection = 'asc' | 'desc';
 
 type SortState = {
@@ -45,10 +47,17 @@ type SortState = {
     direction: SortDirection;
 };
 
+type ActiveSortState = {
+    by: ActiveSortColumn;
+    direction: SortDirection;
+};
+
 type TableColumn = {
     name: string;
     type: SortColumn;
 };
+
+const SORT_STORAGE_KEY = 'file-manager.my-files.sort';
 
 const table: Record<number, TableColumn> = {
     1: { name: 'Name', type: 'name' },
@@ -85,6 +94,9 @@ const {
     selectAllState,
     allSelected,
     selectedIds,
+    selectedItems,
+    selectedCount,
+    selection,
     isSelected,
     toggle: toggleFileSelect,
     clear: clearSelection,
@@ -105,8 +117,16 @@ function openFolder(file: FileListItem): void {
         return;
     }
 
-    router.visit(myFiles.get({ folder: file.id }));
+    router.visit(
+        myFiles.get(
+            { folder: file.id },
+            {
+                query: sortQuery(activeSort(props.sort)),
+            },
+        ),
+    );
 }
+
 function replaceFilesFromProps() {
     allFiles.value = {
         data: props.files.data,
@@ -164,14 +184,24 @@ function toggleSort(column: SortColumn) {
             ? 'desc'
             : 'asc';
 
+    const nextSort: ActiveSortState = {
+        by: column,
+        direction: nextDirection,
+    };
+
+    storeSortPreference(nextSort);
+    visitCurrentFolderWithSort(nextSort);
+}
+
+/**
+ * Visit the current folder using a specific sort state.
+ */
+function visitCurrentFolderWithSort(sortState: ActiveSortState): void {
     router.get(
         myFiles.url(
             props.folder?.parent_id ? { folder: props.folder.id } : undefined,
         ),
-        {
-            sortBy: column,
-            sortDirection: nextDirection,
-        },
+        sortQuery(sortState),
         {
             preserveScroll: true,
             preserveState: true,
@@ -180,6 +210,140 @@ function toggleSort(column: SortColumn) {
             onSuccess: () => nextTick(loadMoreIfNeeded),
         },
     );
+}
+
+/**
+ * Apply an explicit URL sort or restore the stored sort preference.
+ */
+function syncSortPreference(): void {
+    const currentSort = activeSort(props.sort);
+
+    if (hasExplicitSortQuery()) {
+        storeSortPreference(currentSort);
+        return;
+    }
+
+    const storedSort = readSortPreference();
+
+    if (!storedSort) {
+        storeSortPreference(currentSort);
+        return;
+    }
+
+    if (!sameSort(currentSort, storedSort)) {
+        visitCurrentFolderWithSort(storedSort);
+    }
+}
+
+/**
+ * Normalize a server-provided sort state into an active sortable column.
+ */
+function activeSort(sortState: SortState): ActiveSortState {
+    return {
+        by: sortState.by ?? 'size',
+        direction: sortState.direction,
+    };
+}
+
+/**
+ * Convert a sort state into request query parameters.
+ */
+function sortQuery(sortState: ActiveSortState): {
+    sortBy: ActiveSortColumn;
+    sortDirection: SortDirection;
+} {
+    return {
+        sortBy: sortState.by,
+        sortDirection: sortState.direction,
+    };
+}
+
+/**
+ * Determine whether the current URL intentionally specifies sorting.
+ */
+function hasExplicitSortQuery(): boolean {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+
+    const query = new URLSearchParams(window.location.search);
+
+    return query.has('sortBy') || query.has('sortDirection');
+}
+
+/**
+ * Read and validate the saved sorting preference.
+ */
+function readSortPreference(): ActiveSortState | null {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+
+    try {
+        const storedValue = window.localStorage.getItem(SORT_STORAGE_KEY);
+
+        if (!storedValue) {
+            return null;
+        }
+
+        const value = JSON.parse(storedValue) as {
+            by?: unknown;
+            direction?: unknown;
+        };
+
+        if (
+            !isActiveSortColumn(value.by) ||
+            !isSortDirection(value.direction)
+        ) {
+            return null;
+        }
+
+        return {
+            by: value.by,
+            direction: value.direction,
+        };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Store a sorting preference when browser storage is available.
+ */
+function storeSortPreference(sortState: ActiveSortState): void {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(
+            SORT_STORAGE_KEY,
+            JSON.stringify(sortState),
+        );
+    } catch {
+        // Storage can be unavailable in restricted browser environments.
+    }
+}
+
+/**
+ * Determine whether two sorting states are identical.
+ */
+function sameSort(first: ActiveSortState, second: ActiveSortState): boolean {
+    return first.by === second.by && first.direction === second.direction;
+}
+
+/**
+ * Determine whether a value is a supported sortable column.
+ */
+function isActiveSortColumn(value: unknown): value is ActiveSortColumn {
+    return value === 'name' || value === 'updated_at' || value === 'size';
+}
+
+/**
+ * Determine whether a value is a supported sorting direction.
+ */
+function isSortDirection(value: unknown): value is SortDirection {
+    return value === 'asc' || value === 'desc';
 }
 
 function onDelete() {
@@ -218,7 +382,16 @@ watch(
     },
 );
 
+watch(
+    () => [currentFolderId.value, props.sort.by, props.sort.direction] as const,
+    () => {
+        syncSortPreference();
+    },
+);
+
 onMounted(() => {
+    syncSortPreference();
+
     if (!scrollContainer.value || !loadMoreIntersect.value) {
         return;
     }
@@ -255,6 +428,13 @@ onBeforeUnmount(() => {
             >
                 <BreadCrumbs :ancestors="ancestors"></BreadCrumbs>
                 <div class="inline-flex gap-x-2">
+                    <MoveFilesButton
+                        :selection="selection"
+                        :selected-items="selectedItems"
+                        :selected-count="selectedCount"
+                        :source-folder-id="currentFolderId"
+                        @moved="clearSelection"
+                    />
                     <DeleteFilesButton
                         :delete-all="allSelected"
                         :delete-ids="selectedIds"
