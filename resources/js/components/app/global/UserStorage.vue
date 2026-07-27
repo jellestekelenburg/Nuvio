@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { usePage } from '@inertiajs/vue3';
+import { useEcho } from '@laravel/echo-vue';
 import axios from 'axios';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { showErrorNotification } from '@/composables/event-bus';
 import { cn } from '@/lib/utils';
 
@@ -22,7 +24,9 @@ type StorageData = {
     is_full: boolean;
 };
 
-let intervalId: ReturnType<typeof setInterval> | null = null;
+type StorageUpdatedEvent = {
+    storage: StorageData;
+};
 
 const showStorageDetails = ref(false);
 function storageShow() {
@@ -33,9 +37,9 @@ function storageHide() {
 }
 
 const storage = ref<StorageData | null>(null);
-const loading = ref(false);
+const loading = ref<boolean>(false);
 const error = ref<string | null>(null);
-let isFetching = false;
+let isFetching: boolean = false;
 
 const fetchData = async () => {
     if (isFetching) return;
@@ -59,16 +63,18 @@ const fetchData = async () => {
 
 onMounted(() => {
     fetchData();
+});
 
-    intervalId = setInterval(() => {
-        fetchData();
-    }, 45000);
-});
-onUnmounted(() => {
-    if (intervalId) {
-        clearInterval(intervalId);
-    }
-});
+const page = usePage();
+
+useEcho<StorageUpdatedEvent>(
+    `App.Models.User.${page.props.auth.user.id}`,
+    '.storage.updated',
+    (event) => {
+        console.log('Storage update: ', event);
+        storage.value = event.storage;
+    },
+);
 </script>
 
 <template>

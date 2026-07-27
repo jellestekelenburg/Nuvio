@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SquarePen, InfoIcon } from 'lucide-vue-next';
+import { SquarePen, InfoIcon } from '@lucide/vue';
 import {
     ContextMenuContent,
     ContextMenuItem,

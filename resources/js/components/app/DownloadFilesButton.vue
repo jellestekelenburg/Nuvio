@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
-import { DownloadCloudIcon } from 'lucide-vue-next';
+import { DownloadCloudIcon } from '@lucide/vue';
 import { ref } from 'vue';
 import { showErrorNotification } from '@/composables/event-bus';
 import { httpGet } from '@/composables/httpHelper';

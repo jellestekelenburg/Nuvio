@@ -5,7 +5,7 @@ import {
     Folder,
     Home,
     LoaderCircle,
-} from 'lucide-vue-next';
+} from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {

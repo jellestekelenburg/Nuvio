@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, CircleAlert, X } from 'lucide-vue-next';
+import { Check, CircleAlert, X } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { emitter, SHOW_NOTIFICATION } from '@/composables/event-bus';
 

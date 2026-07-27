@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertCircle, FolderInput, LoaderCircle } from 'lucide-vue-next';
+import { AlertCircle, FolderInput, LoaderCircle } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import FolderPicker from '@/components/app/FolderPicker.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';

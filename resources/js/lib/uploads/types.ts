@@ -1,9 +1,5 @@
 export type UploadStatus =
-    | 'queued'
-    | 'planning'
-    | 'uploading'
-    | 'done'
-    | 'failed';
+    'queued' | 'planning' | 'uploading' | 'done' | 'failed';
 
 export type UploadQueueItem = {
     client_id: string;

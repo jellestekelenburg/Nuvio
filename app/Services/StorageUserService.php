@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\StorageUsageUpdated;
 use App\Models\File;
 use App\Models\User;
 use App\Support\SizeFormatter;
@@ -77,6 +78,8 @@ class StorageUserService
 
         Cache::forget($this->cacheKey($user));
         Cache::put($this->cacheKey($user), $stats, now()->addMinutes(10));
+
+        $this->broadcast($user, $stats);
     }
 
     /**
@@ -97,5 +100,16 @@ class StorageUserService
         Cache::put($this->cacheKey($user), $stats, now()->addMinutes(10));
 
         return $stats;
+    }
+
+    /**
+     * @param  StorageStats  $stats
+     */
+    private function broadcast(User $user, array $stats): void
+    {
+        StorageUsageUpdated::dispatch(
+            $user->id,
+            $stats,
+        );
     }
 }
