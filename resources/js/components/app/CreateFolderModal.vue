@@ -29,8 +29,7 @@ const page = usePage();
 
 const currentFolderId = computed<number | null>(() => {
     const folder = page.props.folder as
-        | { id?: number; data?: { id?: number } }
-        | undefined;
+        { id?: number; data?: { id?: number } } | undefined;
 
     return folder?.id ?? folder?.data?.id ?? null;
 });

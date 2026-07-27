@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { FolderOpen, Share2, Trash2, Users } from 'lucide-vue-next';
+import { FolderOpen, Share2, Trash2, Users } from '@lucide/vue';
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';

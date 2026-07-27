@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FolderInput } from 'lucide-vue-next';
+import { FolderInput } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import MoveFilesDialog from '@/components/app/MoveFilesDialog.vue';
 import { Button } from '@/components/ui/button';
@@ -48,12 +48,7 @@ function handleMoved(result: FileMoveResult | null): void {
 </script>
 
 <template>
-    <Button
-        v-if="canOpen"
-        type="button"
-        class="h-9"
-        @click="openDialog"
-    >
+    <Button v-if="canOpen" type="button" class="h-9" @click="openDialog">
         <FolderInput class="size-4" />
         Move to…
     </Button>
