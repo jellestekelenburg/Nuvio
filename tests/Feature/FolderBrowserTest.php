@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\File;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class FolderBrowserTest extends TestCase
@@ -141,7 +142,13 @@ class FolderBrowserTest extends TestCase
         $foreign->is_folder = true;
         $foreign->created_by = $foreignUser->id;
         $foreign->updated_by = $foreignUser->id;
-        $root->appendNode($foreign);
+        $foreign->makeRoot()->save();
+
+        // Simulate an invalid cross-owner parent reference without asking
+        // NestedSet to violate its owner scope.
+        DB::table('files')
+            ->where('id', $foreign->id)
+            ->update(['parent_id' => $root->id]);
 
         $this->actingAs($user)
             ->getJson(route('api.folders.index', [

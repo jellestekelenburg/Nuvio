@@ -70,7 +70,7 @@ class FileRenameTest extends TestCase
         $this->assertSame($folder->id, $nested->fresh()->parent_id);
         $this->assertSame($nested->id, $file->fresh()->parent_id);
         $this->assertSame('files/'.$user->id.'/stored-object', $file->fresh()->storage_path);
-        $this->assertFalse(File::query()->isBroken());
+        $this->assertFalse(File::isBroken());
     }
 
     private function userWithRoot(): array

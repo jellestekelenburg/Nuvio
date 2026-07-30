@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 use Kalnoy\Nestedset\NodeTrait;
+use LogicException;
 
 /**
  * @property int $id
@@ -24,6 +24,7 @@ use Kalnoy\Nestedset\NodeTrait;
  * @property int|null $size
  * @property int $created_by
  * @property int $updated_by
+ * @property bool $permanently_delete
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -38,6 +39,17 @@ class File extends Model
 {
     use HasCreatorAndUpdater, NodeTrait, SoftDeletes;
 
+    protected static function booted(): void
+    {
+        static::updating(function (File $file): void {
+            if ($file->isDirty('created_by')) {
+                throw new LogicException(
+                    'The owner of a file-tree node cannot be changed.',
+                );
+            }
+        });
+    }
+
     protected $fillable = [
         'name',
         'storage_path',
@@ -47,12 +59,40 @@ class File extends Model
         'size',
         'created_by',
         'updated_by',
+        'permanently_delete',
     ];
 
     protected $casts = [
         'is_folder' => 'boolean',
         'size' => 'integer',
+        'permanently_delete' => 'boolean',
     ];
+
+    /**
+     * Keep every user's nested set isolated from all other users.
+     *
+     * @return array<int, string>
+     */
+    protected function getScopeAttributes(): array
+    {
+        return ['created_by'];
+    }
+
+    /**
+     * Check every owner-scoped tree instead of an unscoped empty model.
+     */
+    public static function isBroken(): bool
+    {
+        return static::query()
+            ->withoutGlobalScopes()
+            ->distinct()
+            ->pluck('created_by')
+            ->contains(
+                fn (int $userId): bool => static::scoped([
+                    'created_by' => $userId,
+                ])->isBroken(),
+            );
+    }
 
     /**
      * @return BelongsTo<User, $this>
@@ -111,32 +151,34 @@ class File extends Model
         return $this->created_by == $userId;
     }
 
+    public function isInAvailableTree(): bool
+    {
+        if (
+            $this->trashed()
+            || $this->permanently_delete
+        ) {
+            return false;
+        }
+
+        return ! $this->newNestedSetQuery()
+            ->whereAncestorOf($this)
+            ->where(function ($query): void {
+                $query
+                    ->whereNotNull($this->getDeletedAtColumn())
+                    ->orWhere('permanently_delete', true);
+            })
+            ->exists();
+    }
+
+    public function isAvailableTreeTarget(): bool
+    {
+        return $this->is_folder && $this->isInAvailableTree();
+    }
+
     public function moveToTrash(): bool
     {
         $this->deleted_at = Carbon::now();
 
         return $this->save();
-    }
-
-    public function deleteForever(): void
-    {
-        $this->deleteFilesFromStorage([$this]);
-        $this->forceDelete();
-    }
-
-    /**
-     * @param  iterable<File>  $files
-     */
-    public function deleteFilesFromStorage(iterable $files): void
-    {
-        foreach ($files as $file) {
-            if ($file->is_folder) {
-                $this->deleteFilesFromStorage($file->children);
-            } else {
-                if ($file->storage_path !== null) {
-                    Storage::delete($file->storage_path);
-                }
-            }
-        }
     }
 }

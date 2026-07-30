@@ -17,6 +17,7 @@ class PlannedBatchUploadNameTest extends TestCase
 
     public function test_planning_and_batch_storage_allocate_names_in_the_target_directory(): void
     {
+        config(['filesystems.default' => 'local']);
         Storage::fake('local');
 
         $user = User::factory()->create([

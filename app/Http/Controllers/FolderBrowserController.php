@@ -33,6 +33,8 @@ final class FolderBrowserController extends Controller
             ->whereNull('deleted_at')
             ->firstOrFail();
 
+        abort_unless($currentFolder->isAvailableTreeTarget(), 404);
+
         $ancestors = File::query()
             ->withExists([
                 'children as has_children' => $hasFolderChildren,

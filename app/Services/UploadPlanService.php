@@ -208,18 +208,26 @@ final class UploadPlanService
     private function resolveParent(User $user, ?int $parentId): File
     {
         if ($parentId !== null) {
-            return File::query()
+            $parent = File::query()
                 ->whereKey($parentId)
                 ->where('created_by', $user->id)
                 ->where('is_folder', true)
                 ->whereNull('deleted_at')
                 ->firstOrFail();
+
+            abort_unless($parent->isAvailableTreeTarget(), 404);
+
+            return $parent;
         }
 
-        return File::query()
+        $root = File::query()
             ->where('created_by', $user->id)
             ->whereIsRoot()
             ->whereNull('deleted_at')
             ->firstOrFail();
+
+        abort_unless($root->isAvailableTreeTarget(), 404);
+
+        return $root;
     }
 }

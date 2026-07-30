@@ -20,7 +20,13 @@ class ParentIdBaseRequest extends FormRequest
     {
         $this->parent = File::query()->where('id', $this->input('parent_id'))->first();
 
-        if ($this->parent && ! $this->parent->isOwnedBy(Auth::id())) {
+        if (
+            $this->parent
+            && (
+                ! $this->parent->isOwnedBy(Auth::id())
+                || ! $this->parent->isAvailableTreeTarget()
+            )
+        ) {
             return false;
         }
 
@@ -40,7 +46,9 @@ class ParentIdBaseRequest extends FormRequest
                 Rule::exists('files', 'id')->where(function (Builder $query) {
                     return $query
                         ->where('is_folder', true)
-                        ->where('created_by', auth()->id());
+                        ->where('created_by', auth()->id())
+                        ->whereNull('deleted_at')
+                        ->where('permanently_delete', false);
                 }),
             ],
         ];
