@@ -21,6 +21,7 @@ class UploadMultipartService
         private readonly UploadTargetFolderResolver $targetFolderResolver,
         private readonly AvailableNodeNameService $availableNodeNameService,
         private readonly FileTreeMutationService $fileTreeMutationService,
+        private readonly FileListCache $fileListCache,
     ) {}
 
     /**
@@ -238,6 +239,11 @@ class UploadMultipartService
     }
 
     /**
+     * Complete a multipart upload and register its file in the user's file tree.
+     *
+     * Successful completions invalidate every listing owned by the user because
+     * resolving a relative path can create nodes in multiple folders.
+     *
      * @param  array<int, mixed>  $parts
      * @return array{body: array<string, mixed>, status: int}
      */
@@ -259,7 +265,12 @@ class UploadMultipartService
 
         $upload->loadMissing('completedFile');
 
-        if ($upload->status === MultipartUpload::STATUS_COMPLETED && $upload->completedFile) {
+        if (
+            $upload->status === MultipartUpload::STATUS_COMPLETED
+            && $upload->completedFile
+        ) {
+            $this->fileListCache->flushUser($user);
+
             return $this->result([
                 'ok' => true,
                 'file' => $this->completedFileBody($upload),
@@ -356,6 +367,8 @@ class UploadMultipartService
                 return $file;
             },
         );
+
+        $this->fileListCache->flushUser($user);
 
         return $this->result([
             'ok' => true,

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\File;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -74,6 +75,114 @@ class FileMoveTest extends TestCase
                 ->where('flash.moveResult.moved_count', 1)
                 ->where('flash.moveResult.renamed_count', 0)
                 ->where('flash.moveResult.target_parent_id', $target->id));
+    }
+
+    /**
+     * Invalidate every source and target listing changed by a move.
+     */
+    public function test_moving_files_invalidates_every_changed_folder_listing(): void
+    {
+        Cache::flush();
+
+        [$user, $root] = $this->userWithRoot();
+        $firstSource = $this->createFolder($root, 'First source');
+        $secondSource = $this->createFolder($root, 'Second source');
+        $target = $this->createFolder($root, 'Target');
+        $unchanged = $this->createFolder($root, 'Unchanged');
+        $first = $this->createFile($firstSource, 'first.txt');
+        $second = $this->createFile($secondSource, 'second.txt');
+        $unchangedFile = $this->createFile($unchanged, 'original.txt');
+
+        $firstSourceUrl = route('myFiles', ['folder' => $firstSource->id]);
+        $secondSourceUrl = route('myFiles', ['folder' => $secondSource->id]);
+        $targetUrl = route('myFiles', ['folder' => $target->id]);
+        $unchangedUrl = route('myFiles', ['folder' => $unchanged->id]);
+
+        $this->actingAs($user);
+
+        $this->getJson($firstSourceUrl)
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'first.txt');
+        $this->getJson($secondSourceUrl)
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'second.txt');
+        $this->getJson($targetUrl)
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->getJson($unchangedUrl)
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'original.txt');
+
+        $unchangedFile->forceFill([
+            'name' => 'changed-in-database.txt',
+        ])->save();
+
+        $this->from($firstSourceUrl)
+            ->patch(route('file.move'), [
+                'selection' => [
+                    'mode' => 'ids',
+                    'ids' => [$first->id, $second->id],
+                ],
+                'target_parent_id' => $target->id,
+            ])
+            ->assertRedirect($firstSourceUrl)
+            ->assertSessionHasNoErrors();
+
+        $this->getJson($firstSourceUrl)
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->getJson($secondSourceUrl)
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->getJson($targetUrl)
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.name', 'first.txt')
+            ->assertJsonPath('data.1.name', 'second.txt');
+        $this->getJson($unchangedUrl)
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'original.txt');
+    }
+
+    /**
+     * Preserve cached listings when a move does not change the file tree.
+     */
+    public function test_moving_to_the_current_parent_keeps_the_listing_cache(): void
+    {
+        Cache::flush();
+
+        [$user, $root] = $this->userWithRoot();
+        $folder = $this->createFolder($root, 'Folder');
+        $file = $this->createFile($folder, 'original.txt');
+        $url = route('myFiles', ['folder' => $folder->id]);
+
+        $this->actingAs($user)
+            ->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'original.txt');
+
+        $file->forceFill([
+            'name' => 'changed-in-database.txt',
+        ])->save();
+
+        $this->from($url)
+            ->patch(route('file.move'), [
+                'selection' => [
+                    'mode' => 'ids',
+                    'ids' => [$file->id],
+                ],
+                'target_parent_id' => $folder->id,
+            ])
+            ->assertRedirect($url)
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas(
+                'move_result',
+                fn (array $result): bool => $result['moved_count'] === 0,
+            );
+
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'original.txt');
     }
 
     public function test_select_all_moves_unloaded_items_except_explicit_exclusions(): void

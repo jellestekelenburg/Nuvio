@@ -15,20 +15,22 @@ final class FileMoveService
     public function __construct(
         private readonly AvailableNodeNameService $availableNodeNameService,
         private readonly FileTreeMutationService $fileTreeMutationService,
+        private readonly FileListCache $fileListCache
     ) {}
 
     /**
      * Move a validated selection into a target folder.
      *
      * Every selected top-level node is moved atomically. Selected descendants
-     * are ignored when one of their ancestors is also selected.
+     * are ignored when one of their ancestors is also selected. After commit,
+     * every changed source and target listing is invalidated.
      */
     public function move(
         User $user,
         FileMoveSelection $selection,
         int $targetParentId,
     ): FileMoveResult {
-        return $this->fileTreeMutationService->run(
+        $result = $this->fileTreeMutationService->run(
             $user->id,
             function () use (
                 $user,
@@ -56,6 +58,10 @@ final class FileMoveService
                 );
             },
         );
+
+        $this->flushChangedListings($user, $result);
+
+        return $result;
     }
 
     /**
@@ -363,5 +369,29 @@ final class FileMoveService
     private function uniqueIds(array $ids): array
     {
         return array_values(array_unique($ids));
+    }
+
+    /**
+     * Invalidate every folder listing changed by a committed move.
+     */
+    private function flushChangedListings(
+        User $user,
+        FileMoveResult $result,
+    ): void {
+        if ($result->movedCount === 0) {
+            return;
+        }
+
+        $folderIds = array_values(array_unique([
+            ...$result->sourceParentIds,
+            $result->targetParentId,
+        ]));
+
+        foreach ($folderIds as $folderId) {
+            $this->fileListCache->flushFolder(
+                $user,
+                $folderId,
+            );
+        }
     }
 }
