@@ -198,6 +198,7 @@ final class UploadPlanService
                 'files' => $current,
             ];
         }
+
         return $batches;
     }
 
