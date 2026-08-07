@@ -33,10 +33,10 @@ final class UploadPlanService
     private const int SIGNING_WINDOW = 10;
 
     // Maximum number of small files grouped into one upload request.
-    private const int MAX_BATCH_FILES = 3;
+    private const int MAX_BATCH_FILES = 20;
 
     // Maximum combined size of the small files in one upload request.
-    private const int MAX_BATCH_BYTES = 30 * self::ONE_MIB;
+    private const int MAX_BATCH_BYTES = 20 * self::ONE_MIB;
 
     public function __construct(
         private readonly AvailableNodeNameService $availableNodeNameService,
@@ -198,7 +198,6 @@ final class UploadPlanService
                 'files' => $current,
             ];
         }
-
         return $batches;
     }
 
