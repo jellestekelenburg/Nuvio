@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { Trash } from '@lucide/vue';
+import { LoaderCircle, Trash } from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,10 +43,18 @@ function clickOndelete() {
     showModal.value = true;
 }
 function triggerModal() {
+    if (form.processing) {
+        return;
+    }
+
     showModal.value = !showModal.value;
 }
 
 function ondeleteConfirm() {
+    if (form.processing) {
+        return;
+    }
+
     if (props.deleteAll) {
         form.all = true;
         form.ids = [];
@@ -76,7 +84,10 @@ function ondeleteConfirm() {
     </button>
 
     <Dialog :open="showModal">
-        <DialogContent class="sm:max-w-md">
+        <DialogContent
+            class="sm:max-w-md"
+            :show-close-button="!form.processing"
+        >
             <DialogHeader>
                 <DialogTitle
                     >Are you sure you want to permanently delete these
@@ -85,10 +96,25 @@ function ondeleteConfirm() {
             </DialogHeader>
 
             <DialogFooter>
-                <Button @click="ondeleteConfirm" :variant="'destructive'"
-                    >Yes, delete</Button
+                <Button
+                    type="button"
+                    variant="destructive"
+                    :disabled="form.processing"
+                    :aria-busy="form.processing"
+                    @click="ondeleteConfirm"
                 >
-                <Button @click="triggerModal" :variant="'secondary'">
+                    <LoaderCircle
+                        v-if="form.processing"
+                        class="size-4 animate-spin"
+                    />
+                    {{ form.processing ? 'Deleting...' : 'Yes, delete' }}
+                </Button>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    :disabled="form.processing"
+                    @click="triggerModal"
+                >
                     Close
                 </Button>
             </DialogFooter>

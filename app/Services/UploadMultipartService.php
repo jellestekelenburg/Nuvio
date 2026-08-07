@@ -6,7 +6,6 @@ use App\Models\File;
 use App\Models\MultipartUpload;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class UploadMultipartService
@@ -21,6 +20,8 @@ class UploadMultipartService
         private readonly StorageUserService $storageUserService,
         private readonly UploadTargetFolderResolver $targetFolderResolver,
         private readonly AvailableNodeNameService $availableNodeNameService,
+        private readonly FileTreeMutationService $fileTreeMutationService,
+        private readonly FileListCache $fileListCache,
     ) {}
 
     /**
@@ -238,6 +239,11 @@ class UploadMultipartService
     }
 
     /**
+     * Complete a multipart upload and register its file in the user's file tree.
+     *
+     * Successful completions invalidate every listing owned by the user because
+     * resolving a relative path can create nodes in multiple folders.
+     *
      * @param  array<int, mixed>  $parts
      * @return array{body: array<string, mixed>, status: int}
      */
@@ -259,7 +265,12 @@ class UploadMultipartService
 
         $upload->loadMissing('completedFile');
 
-        if ($upload->status === MultipartUpload::STATUS_COMPLETED && $upload->completedFile) {
+        if (
+            $upload->status === MultipartUpload::STATUS_COMPLETED
+            && $upload->completedFile
+        ) {
+            $this->fileListCache->flushUser($user);
+
             return $this->result([
                 'ok' => true,
                 'file' => $this->completedFileBody($upload),
@@ -301,48 +312,63 @@ class UploadMultipartService
             return $this->result(['ok' => false, 'message' => 'Completed S3 object size does not match the upload plan.'], 500);
         }
 
-        $file = DB::transaction(function () use ($user, $upload) {
-            $rootParent = File::query()
-                ->whereKey($upload->parent_id)
-                ->where('created_by', $user->id)
-                ->where('is_folder', true)
-                ->whereNull('deleted_at')
-                ->lockForUpdate()
-                ->firstOrFail();
-            $targetParent = $this->targetFolderResolver->resolve(
-                user: $user,
-                rootParent: $rootParent,
-                relativePath: $upload->relative_path,
-            );
-            $targetParent = File::query()
-                ->whereKey($targetParent->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-            $finalName = $this->availableNodeNameService->generate(
-                targetParent: $targetParent,
-                requestedName: $upload->name,
-            );
+        $file = $this->fileTreeMutationService->run(
+            $user->id,
+            function () use ($user, $upload): File {
+                $rootParent = File::query()
+                    ->whereKey($upload->parent_id)
+                    ->where('created_by', $user->id)
+                    ->where('is_folder', true)
+                    ->whereNull('deleted_at')
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            $file = $this->registerStoredS3File->handle(
-                user: $user,
-                parent: $targetParent,
-                s3Key: $upload->s3_key,
-                name: $finalName,
-                mime: $upload->content_type,
-                size: $upload->size,
-            );
+                abort_unless(
+                    $rootParent->isAvailableTreeTarget(),
+                    404,
+                );
 
-            $this->storageUserService->addUsage($user, $upload->size);
+                $targetParent = $this->targetFolderResolver->resolve(
+                    user: $user,
+                    rootParent: $rootParent,
+                    relativePath: $upload->relative_path,
+                );
+                $targetParent = File::query()
+                    ->whereKey($targetParent->id)
+                    ->where('created_by', $user->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $finalName = $this->availableNodeNameService->generate(
+                    targetParent: $targetParent,
+                    requestedName: $upload->name,
+                );
 
-            $upload->forceFill([
-                'status' => MultipartUpload::STATUS_COMPLETED,
-                'completed_file_id' => $file->id,
-                'reserved_bytes' => 0,
-                'completed_at' => now(),
-            ])->save();
+                $file = $this->registerStoredS3File->handle(
+                    user: $user,
+                    parent: $targetParent,
+                    s3Key: $upload->s3_key,
+                    name: $finalName,
+                    mime: $upload->content_type,
+                    size: $upload->size,
+                );
 
-            return $file;
-        });
+                $this->storageUserService->addUsage(
+                    $user,
+                    $upload->size,
+                );
+
+                $upload->forceFill([
+                    'status' => MultipartUpload::STATUS_COMPLETED,
+                    'completed_file_id' => $file->id,
+                    'reserved_bytes' => 0,
+                    'completed_at' => now(),
+                ])->save();
+
+                return $file;
+            },
+        );
+
+        $this->fileListCache->flushUser($user);
 
         return $this->result([
             'ok' => true,
@@ -448,19 +474,27 @@ class UploadMultipartService
     private function resolveParent(User $user, ?int $parentId): File
     {
         if ($parentId !== null) {
-            return File::query()
+            $parent = File::query()
                 ->where('id', $parentId)
                 ->where('created_by', $user->id)
                 ->where('is_folder', true)
                 ->whereNull('deleted_at')
                 ->firstOrFail();
+
+            abort_unless($parent->isAvailableTreeTarget(), 404);
+
+            return $parent;
         }
 
-        return File::query()
+        $root = File::query()
             ->where('created_by', $user->id)
             ->whereIsRoot()
             ->whereNull('deleted_at')
             ->firstOrFail();
+
+        abort_unless($root->isAvailableTreeTarget(), 404);
+
+        return $root;
     }
 
     private function makeS3Key(User $user, string $originalName): string

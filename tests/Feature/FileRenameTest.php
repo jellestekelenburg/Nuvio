@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\File;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class FileRenameTest extends TestCase
@@ -21,6 +22,31 @@ class FileRenameTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame('new-name.png', $file->fresh()->name);
+    }
+
+    /**
+     * Invalidate the parent listing cache after renaming a file.
+     */
+    public function test_renaming_a_file_invalidates_the_parent_listing_cache(): void
+    {
+        Cache::flush();
+
+        [$user, $root] = $this->userWithRoot();
+        $file = $this->child($root, 'old-name.png');
+        $url = route('myFiles', ['folder' => $root->id]);
+
+        $this->actingAs($user)
+            ->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'old-name.png');
+
+        $this->from($url)
+            ->patch(route('file.rename', $file), ['name' => 'new-name.png'])
+            ->assertRedirect($url);
+
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'new-name.png');
     }
 
     public function test_a_file_extension_cannot_be_changed(): void
@@ -70,7 +96,7 @@ class FileRenameTest extends TestCase
         $this->assertSame($folder->id, $nested->fresh()->parent_id);
         $this->assertSame($nested->id, $file->fresh()->parent_id);
         $this->assertSame('files/'.$user->id.'/stored-object', $file->fresh()->storage_path);
-        $this->assertFalse(File::query()->isBroken());
+        $this->assertFalse(File::isBroken());
     }
 
     private function userWithRoot(): array

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm, usePage } from '@inertiajs/vue3';
-import { Trash2 } from '@lucide/vue';
+import { LoaderCircle, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,10 +44,18 @@ function clickOnDelete() {
     showModal.value = true;
 }
 function triggerModal() {
+    if (deleteFilesForm.processing) {
+        return;
+    }
+
     showModal.value = !showModal.value;
 }
 
 function onDeleteConfirm() {
+    if (deleteFilesForm.processing) {
+        return;
+    }
+
     deleteFilesForm.parent_id = page.props.folder?.id ?? null;
     if (props.deleteAll) {
         deleteFilesForm.all = true;
@@ -78,16 +86,38 @@ function onDeleteConfirm() {
     </button>
 
     <Dialog :open="showModal">
-        <DialogContent class="sm:max-w-md">
+        <DialogContent
+            class="sm:max-w-md"
+            :show-close-button="!deleteFilesForm.processing"
+        >
             <DialogHeader>
                 <DialogTitle>Are you sure?</DialogTitle>
             </DialogHeader>
 
             <DialogFooter>
-                <Button @click="onDeleteConfirm" :variant="'destructive'"
-                    >Yes, Delete</Button
+                <Button
+                    type="button"
+                    variant="destructive"
+                    :disabled="deleteFilesForm.processing"
+                    :aria-busy="deleteFilesForm.processing"
+                    @click="onDeleteConfirm"
                 >
-                <Button @click="triggerModal" :variant="'secondary'">
+                    <LoaderCircle
+                        v-if="deleteFilesForm.processing"
+                        class="size-4 animate-spin"
+                    />
+                    {{
+                        deleteFilesForm.processing
+                            ? 'Moving to trash...'
+                            : 'Yes, Delete'
+                    }}
+                </Button>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    :disabled="deleteFilesForm.processing"
+                    @click="triggerModal"
+                >
                     Close
                 </Button>
             </DialogFooter>

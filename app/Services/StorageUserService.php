@@ -98,6 +98,7 @@ class StorageUserService
         $stats = $this->makeStats($used, $max);
 
         Cache::put($this->cacheKey($user), $stats, now()->addMinutes(10));
+        $this->broadcast($user, $stats);
 
         return $stats;
     }

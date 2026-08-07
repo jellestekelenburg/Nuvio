@@ -8,51 +8,60 @@ use App\Exceptions\FileMoveException;
 use App\Models\File;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 final class FileMoveService
 {
     public function __construct(
         private readonly AvailableNodeNameService $availableNodeNameService,
+        private readonly FileTreeMutationService $fileTreeMutationService,
+        private readonly FileListCache $fileListCache
     ) {}
 
     /**
      * Move a validated selection into a target folder.
      *
      * Every selected top-level node is moved atomically. Selected descendants
-     * are ignored when one of their ancestors is also selected.
+     * are ignored when one of their ancestors is also selected. After commit,
+     * every changed source and target listing is invalidated.
      */
     public function move(
         User $user,
         FileMoveSelection $selection,
         int $targetParentId,
     ): FileMoveResult {
-        return DB::transaction(function () use (
-            $user,
-            $selection,
-            $targetParentId
-        ): FileMoveResult {
-            $targetParent = $this->resolveTargetParent(
-                $user,
-                $targetParentId,
-            );
-
-            $selectedNodes = $this->resolveSelection(
+        $result = $this->fileTreeMutationService->run(
+            $user->id,
+            function () use (
                 $user,
                 $selection,
-            );
+                $targetParentId,
+            ): FileMoveResult {
+                $targetParent = $this->resolveTargetParent(
+                    $user,
+                    $targetParentId,
+                );
 
-            $this->validateBatch($selectedNodes, $targetParent);
+                $selectedNodes = $this->resolveSelection(
+                    $user,
+                    $selection,
+                );
 
-            $topLevelNodes = $this->topLevelNodes($selectedNodes);
+                $this->validateBatch($selectedNodes, $targetParent);
 
-            return $this->moveTopLevelNodes(
-                user: $user,
-                nodes: $topLevelNodes,
-                targetParent: $targetParent,
-            );
-        }, 3);
+                $topLevelNodes = $this->topLevelNodes($selectedNodes);
+
+                return $this->moveTopLevelNodes(
+                    user: $user,
+                    nodes: $topLevelNodes,
+                    targetParent: $targetParent,
+                );
+            },
+        );
+
+        $this->flushChangedListings($user, $result);
+
+        return $result;
     }
 
     /**
@@ -69,7 +78,10 @@ final class FileMoveService
             ->lockForUpdate()
             ->first();
 
-        if (! $targetParent instanceof File) {
+        if (
+            ! $targetParent instanceof File
+            || ! $targetParent->isAvailableTreeTarget()
+        ) {
             throw new FileMoveException(
                 'The destination folder is no longer available.'
             );
@@ -124,6 +136,14 @@ final class FileMoveService
             );
         }
 
+        if ($nodes->contains(
+            fn (File $node): bool => ! $node->isInAvailableTree(),
+        )) {
+            throw new FileMoveException(
+                'One or more selected items are no longer available.',
+            );
+        }
+
         return $nodes;
     }
 
@@ -149,7 +169,10 @@ final class FileMoveService
             ->lockForUpdate()
             ->first();
 
-        if (! $sourceParent instanceof File) {
+        if (
+            ! $sourceParent instanceof File
+            || ! $sourceParent->isAvailableTreeTarget()
+        ) {
             throw new FileMoveException(
                 'The source folder is no longer available.'
             );
@@ -346,5 +369,29 @@ final class FileMoveService
     private function uniqueIds(array $ids): array
     {
         return array_values(array_unique($ids));
+    }
+
+    /**
+     * Invalidate every folder listing changed by a committed move.
+     */
+    private function flushChangedListings(
+        User $user,
+        FileMoveResult $result,
+    ): void {
+        if ($result->movedCount === 0) {
+            return;
+        }
+
+        $folderIds = array_values(array_unique([
+            ...$result->sourceParentIds,
+            $result->targetParentId,
+        ]));
+
+        foreach ($folderIds as $folderId) {
+            $this->fileListCache->flushFolder(
+                $user,
+                $folderId,
+            );
+        }
     }
 }

@@ -8,6 +8,7 @@ use App\Services\UploadBatchService;
 use App\Services\UploadPlanService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -17,6 +18,7 @@ class PlannedBatchUploadNameTest extends TestCase
 
     public function test_planning_and_batch_storage_allocate_names_in_the_target_directory(): void
     {
+        config(['filesystems.default' => 'local']);
         Storage::fake('local');
 
         $user = User::factory()->create([
@@ -58,6 +60,57 @@ class PlannedBatchUploadNameTest extends TestCase
         );
     }
 
+    /**
+     * Invalidate cached listings after storing a planned small-file batch.
+     */
+    public function test_batch_storage_invalidates_cached_file_listings(): void
+    {
+        config(['filesystems.default' => 'local']);
+        Storage::fake('local');
+        Cache::flush();
+
+        $user = User::factory()->create([
+            'max_storage' => 1024 * 1024,
+            'used_storage' => 0,
+        ]);
+        $root = $this->createRoot($user);
+        $file = UploadedFile::fake()->create('report.txt', 1, 'text/plain');
+        $url = route('myFiles', ['folder' => $root->id]);
+
+        $this->actingAs($user)
+            ->getJson($url)
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $plan = app(UploadPlanService::class)->makePlan(
+            user: $user,
+            files: [
+                $this->metadata(
+                    clientId: 'report',
+                    file: $file,
+                    relativePath: 'Portfolio/report.txt',
+                ),
+            ],
+            parentId: $root->id,
+        );
+
+        $result = app(UploadBatchService::class)->store(
+            user: $user,
+            uploadId: $plan['upload_id'],
+            batchId: $plan['small_file_batches'][0]['batch_id'],
+            files: [$file],
+            clientIds: ['report'],
+        );
+
+        $this->assertTrue($result['ok']);
+
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Portfolio')
+            ->assertJsonPath('data.0.is_folder', true);
+    }
+
     public function test_planning_scopes_reservations_to_logical_directories_without_creating_them(): void
     {
         $user = User::factory()->create([
@@ -88,13 +141,16 @@ class PlannedBatchUploadNameTest extends TestCase
      *
      * @return array<string, mixed>
      */
-    private function metadata(string $clientId, UploadedFile $file): array
-    {
+    private function metadata(
+        string $clientId,
+        UploadedFile $file,
+        ?string $relativePath = null,
+    ): array {
         return [
             'client_id' => $clientId,
             'name' => $file->getClientOriginalName(),
             'size' => $file->getSize(),
-            'relative_path' => null,
+            'relative_path' => $relativePath,
             'content_type' => $file->getClientMimeType(),
             'last_modified' => null,
         ];

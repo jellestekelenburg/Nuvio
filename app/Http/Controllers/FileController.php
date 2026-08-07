@@ -8,11 +8,15 @@ use App\Http\Requests\StoreFileRequest;
 use App\Http\Requests\StoreFolderRequest;
 use App\Http\Requests\TrashFilesRequest;
 use App\Http\Resources\FileResource;
+use App\Jobs\DeletePendingFiles;
 use App\Models\File;
 use App\Models\User;
+use App\Services\FileListCache;
+use App\Services\FileTreeMutationService;
 use App\Services\StorageUserService;
 use App\Services\StoreUploadedFile;
 use App\Services\ZipCreatorService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -35,31 +39,25 @@ class FileController extends Controller
     public function __construct(
         StorageUserService $storageUserService,
         private readonly StoreUploadedFile $storeUploadedFile,
+        private readonly FileTreeMutationService $fileTreeMutationService,
+        private readonly FileListCache $fileListCache,
     ) {
         $this->storageUserService = $storageUserService;
     }
 
+    /**
+     * Render or return one authorized folder listing.
+     */
     public function myFiles(
         Request $request,
         ?int $folder = null,
-    ): AnonymousResourceCollection|InertiaResponse {
+    ): JsonResponse|InertiaResponse {
         $user = $this->authenticatedUser($request);
         $sortableColumns = [
             'name' => 'files.name',
             'updated_at' => 'files.updated_at',
             'size' => 'files.size',
         ];
-
-        $sortBy = $request->query('sortBy', 'size');
-        $sortDirection = $request->query('sortDirection', 'desc');
-
-        $sortColumn = $sortableColumns[$sortBy] ?? 'files.size';
-
-        if (! in_array($sortDirection, ['asc', 'desc'])) {
-            $sortDirection = 'desc';
-        }
-
-        $limit = $this->paginationLimit($request);
 
         if ($folder !== null) {
             $folder = File::query()
@@ -68,32 +66,47 @@ class FileController extends Controller
                 ->where('is_folder', true)
                 ->whereNull('deleted_at')
                 ->firstOrFail();
+
+            abort_unless($folder->isAvailableTreeTarget(), 404);
         } else {
             $folder = $this->getRoot();
         }
 
-        $files = File::query()
-            ->with(['user:id,name', 'updater:id,name'])
-            ->where('parent_id', $folder->id)
-            ->where('created_by', $user->id)
-            ->orderBy('is_folder', 'desc')
-            ->orderBy($sortColumn, $sortDirection)
-            ->orderBy('files.id')
-            ->paginate($limit)
-            ->withQueryString();
+        $parameters = $this->listingParameters(
+            $request,
+            $sortableColumns,
+        );
 
-        $files = FileResource::collection($files);
+        $files = $this->fileListCache->rememberListing(
+            user: $user,
+            folder: $folder,
+            parameters: [
+                'page' => $parameters['page'],
+                'limit' => $parameters['limit'],
+                'sort_by' => $parameters['sort_by'],
+                'sort_direction' => $parameters['sort_direction'],
+            ],
+            resolver: fn (): array => $this->fileListingPayload(
+                user: $user,
+                folder: $folder,
+                parameters: $parameters,
+            ),
+        );
 
         if ($request->wantsJson()) {
-            return $files;
+            return response()->json($files);
         }
 
         $sort = [
-            'by' => $sortBy,
-            'direction' => $sortDirection,
+            'by' => $parameters['sort_by'],
+            'direction' => $parameters['sort_direction'],
         ];
 
-        $ancestorsAndFolder = $folder->ancestors->push($folder);
+        $ancestorsAndFolder = $folder->newNestedSetQuery()
+            ->whereAncestorOf($folder)
+            ->defaultOrder()
+            ->get()
+            ->push($folder);
         $ancestorsAndFolder->loadMissing(['user:id,name', 'updater:id,name']);
 
         $ancestors = FileResource::collection($ancestorsAndFolder);
@@ -110,6 +123,7 @@ class FileController extends Controller
         $files = File::onlyTrashed()
             ->with(['user:id,name', 'updater:id,name'])
             ->where('created_by', $user->id)
+            ->where('permanently_delete', false)
             ->orderBy('is_folder', 'desc')
             ->orderBy('files.deleted_at', 'desc')
             ->orderBy('files.id')
@@ -124,57 +138,113 @@ class FileController extends Controller
         return Inertia::render('Trash', compact('files'));
     }
 
+    /**
+     * Create a folder and invalidate its parent's cached listings after commit.
+     */
     public function createFolder(StoreFolderRequest $request): RedirectResponse
     {
+        $user = $this->authenticatedUser($request);
         $data = $request->validated();
-        $parent = $request->parent;
+        $requestedParentId = $request->parent?->id;
 
-        if (! $parent) {
-            $parent = $this->getRoot();
-        }
+        $targetParentId = $this->fileTreeMutationService->run(
+            $user->id,
+            function () use ($user, $data, $requestedParentId): int {
+                $parent = $this->lockedParent($user, $requestedParentId);
 
-        $file = new File;
-        $file->is_folder = true;
-        $file->name = $data['name'];
+                $file = new File;
+                $file->is_folder = true;
+                $file->name = $data['name'];
+                $file->created_by = $user->id;
+                $file->updated_by = $user->id;
 
-        $parent->appendNode($file);
+                $parent->appendNode($file);
+
+                return (int) $parent->getKey();
+            },
+        );
+
+        $this->fileListCache->flushFolder($user, $targetParentId);
 
         return redirect()->back();
     }
 
-    public function rename(RenameFileRequest $request, File $file): RedirectResponse
-    {
-        $name = $request->validated('name');
-        $file->name = $name;
+    /**
+     * Rename a file or folder and invalidate its parent listing after persistence.
+     */
+    public function rename(
+        RenameFileRequest $request,
+        File $file
+    ): RedirectResponse {
+        $user = $this->authenticatedUser($request);
+        $parentId = $file->parent_id;
+
+        $file->name = $request->validated('name');
         $file->save();
 
+        if ($parentId !== null) {
+            $this->fileListCache->flushFolder($user, $parentId);
+        }
+
         return redirect()->back();
     }
 
+    /**
+     * Store uploaded files and invalidate the target folder listing after commit.
+     */
     public function store(StoreFileRequest $request): void
     {
-        $totalUploadedBytes = 0;
-
         $data = $request->validated();
-        $parent = $request->parent;
         $user = $this->authenticatedUser($request);
+        $requestedParentId = $request->parent?->id;
         $fileTree = $request->input('file_tree', []);
 
-        if (! $parent) {
-            $parent = $this->getRoot();
-        }
+        /** @var array{uploaded_bytes: int, target_parent_id: int} $mutationResult */
+        $mutationResult = $this->fileTreeMutationService->run(
+            $user->id,
+            function () use (
+                $data,
+                $fileTree,
+                $requestedParentId,
+                $user,
+            ): array {
+                $parent = $this->lockedParent($user, $requestedParentId);
+                $uploadedBytes = 0;
 
-        if (is_array($fileTree) && $fileTree !== []) {
-            $totalUploadedBytes = $this->saveFileTree($fileTree, $parent, $user);
-        } else {
-            foreach ($data['files'] as $file) {
-                if ($file instanceof UploadedFile) {
-                    $totalUploadedBytes += $this->saveFile($file, $user, $parent);
+                if (is_array($fileTree) && $fileTree !== []) {
+                    $uploadedBytes = $this->saveFileTree(
+                        $fileTree,
+                        $parent,
+                        $user,
+                    );
+                } else {
+                    foreach ($data['files'] as $file) {
+                        if ($file instanceof UploadedFile) {
+                            $uploadedBytes += $this->saveFile(
+                                $file,
+                                $user,
+                                $parent,
+                            );
+                        }
+                    }
                 }
-            }
-        }
 
-        $this->storageUserService->addUsage($user, $totalUploadedBytes);
+                return [
+                    'uploaded_bytes' => $uploadedBytes,
+                    'target_parent_id' => (int) $parent->getKey(),
+                ];
+            },
+        );
+
+        $this->fileListCache->flushFolder(
+            $user,
+            $mutationResult['target_parent_id'],
+        );
+
+        $this->storageUserService->addUsage(
+            $user,
+            $mutationResult['uploaded_bytes'],
+        );
     }
 
     private function getRoot(): File
@@ -204,6 +274,8 @@ class FileController extends Controller
                 $folder = new File;
                 $folder->is_folder = true;
                 $folder->name = $name;
+                $folder->created_by = $user->id;
+                $folder->updated_by = $user->id;
 
                 $parent->appendNode($folder);
                 $total += $this->saveFileTree($file, $folder, $user);
@@ -227,33 +299,105 @@ class FileController extends Controller
             ->size;
     }
 
+    private function lockedParent(User $user, ?int $parentId): File
+    {
+        $parent = File::query()
+            ->where('created_by', $user->id)
+            ->where('is_folder', true)
+            ->whereNull('deleted_at')
+            ->when(
+                $parentId !== null,
+                fn ($query) => $query->whereKey($parentId),
+                fn ($query) => $query->whereIsRoot(),
+            )
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        abort_unless($parent->isAvailableTreeTarget(), 404);
+
+        return $parent;
+    }
+
+    /**
+     * Move selected items to trash and invalidate every affected source listing.
+     */
     public function destroy(FilesActionsRequest $request): RedirectResponse
     {
+        $user = $this->authenticatedUser($request);
         $data = $request->validated();
-        $parent = $request->parent ?? $this->getRoot();
+        $requestedParentId = $request->parent?->id;
 
-        if ($data['all']) {
-            $children = $parent->children;
+        /**
+         * @var array{
+         *     redirect_parent_id: int|null,
+         *     source_parent_ids: list<int>
+         * } $mutationResult
+         */
+        $mutationResult = $this->fileTreeMutationService->run(
+            $user->id,
+            function () use ($user, $data, $requestedParentId): array {
+                $parent = $this->lockedParent($user, $requestedParentId);
+                $sourceParentIds = [];
 
-            foreach ($children as $child) {
-                $child->moveToTrash();
-            }
+                $moveToTrash = function (File $file) use (&$sourceParentIds): void {
+                    if ($file->parent_id !== null) {
+                        $sourceParentIds[] = (int) $file->parent_id;
+                    }
+
+                    $file->moveToTrash();
+                };
+
+                if ($data['all']) {
+                    $children = File::query()
+                        ->where('parent_id', $parent->id)
+                        ->where('created_by', $user->id)
+                        ->lockForUpdate()
+                        ->get();
+
+                    foreach ($children as $child) {
+                        $moveToTrash($child);
+                    }
+                }
+
+                foreach ($data['ids'] ?? [] as $id) {
+                    if (! is_int($id) && ! is_string($id)) {
+                        continue;
+                    }
+
+                    $file = File::query()
+                        ->whereKey($id)
+                        ->where('created_by', $user->id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($file) {
+                        $moveToTrash($file);
+                    }
+                }
+
+                return [
+                    'redirect_parent_id' => $parent->isRoot()
+                        ? null
+                        : (int) $parent->id,
+                    'source_parent_ids' => array_values(
+                        array_unique($sourceParentIds),
+                    ),
+                ];
+            },
+        );
+
+        foreach ($mutationResult['source_parent_ids'] as $sourceParentId) {
+            $this->fileListCache->flushFolder(
+                $user,
+                $sourceParentId,
+            );
         }
 
-        foreach ($data['ids'] ?? [] as $id) {
-            if (! is_int($id) && ! is_string($id)) {
-                continue;
-            }
+        $redirectParentId = $mutationResult['redirect_parent_id'];
 
-            $file = File::query()->whereKey($id)->first();
-            if ($file) {
-                $file->moveToTrash();
-            }
-        }
-
-        return $parent->isRoot()
+        return $redirectParentId === null
             ? to_route('myFiles')
-            : to_route('myFiles', ['folder' => $parent->id]);
+            : to_route('myFiles', ['folder' => $redirectParentId]);
     }
 
     /**
@@ -331,24 +475,52 @@ class FileController extends Controller
         );
     }
 
+    /**
+     * Restore selected items and invalidate every destination listing after commit.
+     */
     public function restore(TrashFilesRequest $request): RedirectResponse
     {
         $user = $this->authenticatedUser($request);
         $data = $request->validated();
-        if ($data['all']) {
-            $children = File::onlyTrashed()
-                ->where('created_by', $user->id)
-                ->get();
-        } else {
-            $ids = $data['ids'] ?? [];
-            $children = File::onlyTrashed()
-                ->where('created_by', $user->id)
-                ->whereIn('id', $ids)
-                ->get();
-        }
 
-        foreach ($children as $child) {
-            $child->restore();
+        /** @var list<int> $destinationParentIds */
+        $destinationParentIds = $this->fileTreeMutationService->run(
+            $user->id,
+            function () use ($user, $data): array {
+                $query = File::onlyTrashed()
+                    ->where('created_by', $user->id)
+                    ->where('permanently_delete', false);
+
+                if (! ($data['all'] ?? false)) {
+                    $query->whereIn('id', $data['ids'] ?? []);
+                }
+
+                $items = $query
+                    ->lockForUpdate()
+                    ->get();
+
+                $destinationParentIds = [];
+
+                foreach ($items as $item) {
+                    if (
+                        $item->restore()
+                        && $item->parent_id !== null
+                    ) {
+                        $destinationParentIds[] = (int) $item->parent_id;
+                    }
+                }
+
+                return array_values(
+                    array_unique($destinationParentIds),
+                );
+            },
+        );
+
+        foreach ($destinationParentIds as $destinationParentId) {
+            $this->fileListCache->flushFolder(
+                $user,
+                $destinationParentId,
+            );
         }
 
         return to_route('trash');
@@ -358,24 +530,121 @@ class FileController extends Controller
     {
         $user = $this->authenticatedUser($request);
         $data = $request->validated();
-        if ($data['all']) {
-            $children = File::onlyTrashed()
-                ->where('created_by', $user->id)
-                ->get();
-        } else {
-            $ids = $data['ids'] ?? [];
-            $children = File::onlyTrashed()
-                ->where('created_by', $user->id)
-                ->whereIn('id', $ids)
-                ->get();
-        }
 
-        foreach ($children as $child) {
-            $child->deleteForever();
-        }
+        $this->fileTreeMutationService->run(
+            $user->id,
+            function () use ($user, $data): void {
+                $query = File::onlyTrashed()
+                    ->where('created_by', $user->id)
+                    ->where('permanently_delete', false);
 
-        $this->storageUserService->clearCache($user);
+                if (! ($data['all'] ?? false)) {
+                    $query->whereIn('id', $data['ids'] ?? []);
+                }
+
+                $updatedFiles = $query->update([
+                    'permanently_delete' => true,
+                    'updated_at' => now(),
+                ]);
+
+                if ($updatedFiles > 0) {
+                    DeletePendingFiles::dispatch($user->id)
+                        ->afterCommit();
+                }
+            },
+        );
 
         return to_route('trash');
+    }
+
+    /**
+     * Normalize listing parameters and resolve the corresponding database column.
+     *
+     * @param  array<string, string>  $sortableColumns
+     * @return array{
+     *     page: int,
+     *     limit: int,
+     *     sort_by: string,
+     *     sort_direction: 'asc'|'desc',
+     *     sort_column: string
+     * }
+     */
+    private function listingParameters(
+        Request $request,
+        array $sortableColumns,
+    ): array {
+        $requestedSortBy = $request->query('sortBy', 'size');
+        $sortBy = is_string($requestedSortBy)
+            && array_key_exists($requestedSortBy, $sortableColumns)
+                ? $requestedSortBy
+                : 'size';
+
+        $requestedSortDirection = $request->query('sortDirection', 'desc');
+        $sortDirection = is_string($requestedSortDirection)
+            && in_array(
+                $requestedSortDirection,
+                ['asc', 'desc'],
+                true,
+            )
+                ? $requestedSortDirection
+                : 'desc';
+
+        $requestedPage = $request->query('page', 1);
+        $page = is_numeric($requestedPage)
+            ? max(1, (int) $requestedPage)
+            : 1;
+
+        return [
+            'page' => $page,
+            'limit' => $this->paginationLimit($request),
+            'sort_by' => $sortBy,
+            'sort_direction' => $sortDirection,
+            'sort_column' => $sortableColumns[$sortBy],
+        ];
+    }
+
+    /**
+     * Query and serialize one exact page of an authorized folder listing.
+     *
+     * @param  array{
+     *     page: int,
+     *     limit: int,
+     *     sort_by: string,
+     *     sort_direction: 'asc'|'desc',
+     *     sort_column: string
+     * }  $parameters
+     * @return array<string, mixed>
+     */
+    private function fileListingPayload(
+        User $user,
+        File $folder,
+        array $parameters,
+    ): array {
+        $paginator = File::query()
+            ->with(['user:id,name', 'updater:id,name'])
+            ->where('parent_id', $folder->id)
+            ->where('created_by', $user->id)
+            ->orderBy('is_folder', 'desc')
+            ->orderBy(
+                $parameters['sort_column'],
+                $parameters['sort_direction'],
+            )
+            ->orderBy('files.id')
+            ->paginate(
+                perPage: $parameters['limit'],
+                page: $parameters['page'],
+            )
+            ->appends([
+                'limit' => $parameters['limit'],
+                'sortBy' => $parameters['sort_by'],
+                'sortDirection' => $parameters['sort_direction'],
+            ]);
+
+        /** @var array<string, mixed> $payload */
+        $payload = FileResource::collection($paginator)
+            ->response()
+            ->getData(true);
+
+        return $payload;
     }
 }

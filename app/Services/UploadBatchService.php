@@ -6,7 +6,6 @@ use App\Models\File;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 class UploadBatchService
 {
@@ -15,10 +14,15 @@ class UploadBatchService
         private readonly StorageUserService $storageUserService,
         private readonly UploadTargetFolderResolver $targetFolderResolver,
         private readonly AvailableNodeNameService $availableNodeNameService,
+        private readonly FileTreeMutationService $fileTreeMutationService,
+        private readonly FileListCache $fileListCache,
     ) {}
 
     /**
      * Store one planned small-file batch.
+     *
+     * Every committed file invalidates the user's file-list cache because one
+     * batch can create directory nodes and write files into multiple folders.
      *
      * @param  array<int, UploadedFile>  $files
      * @param  array<int, string>  $clientIds
@@ -143,38 +147,52 @@ class UploadBatchService
             $clientId = $clientIds[$index];
             $plannedFile = $plannedFiles[$clientId];
 
-            $model = DB::transaction(function () use (
-                $user,
-                $file,
-                $rootParent,
-                $plannedFile,
-            ): File {
-                // Locking the plan root also serializes missing folder creation.
-                $lockedRootParent = File::query()
-                    ->whereKey($rootParent->id)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-                $targetParent = $this->targetFolderResolver->resolve(
-                    user: $user,
-                    rootParent: $lockedRootParent,
-                    relativePath: $plannedFile['relative_path'] ?? null,
-                );
-                $lockedTargetParent = File::query()
-                    ->whereKey($targetParent->id)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-                $finalName = $this->availableNodeNameService->generate(
-                    targetParent: $lockedTargetParent,
-                    requestedName: $plannedFile['original_name'],
-                );
+            $model = $this->fileTreeMutationService->run(
+                $user->id,
+                function () use (
+                    $user,
+                    $file,
+                    $rootParent,
+                    $plannedFile,
+                ): File {
+                    $lockedRootParent = File::query()
+                        ->whereKey($rootParent->id)
+                        ->where('created_by', $user->id)
+                        ->lockForUpdate()
+                        ->firstOrFail();
 
-                return $this->storeUploadedFile->handle(
-                    file: $file,
-                    user: $user,
-                    parent: $lockedTargetParent,
-                    name: $finalName,
-                );
-            });
+                    abort_unless(
+                        $lockedRootParent->isAvailableTreeTarget(),
+                        404,
+                    );
+
+                    $targetParent = $this->targetFolderResolver->resolve(
+                        user: $user,
+                        rootParent: $lockedRootParent,
+                        relativePath: $plannedFile['relative_path'] ?? null,
+                    );
+
+                    $lockedTargetParent = File::query()
+                        ->whereKey($targetParent->id)
+                        ->where('created_by', $user->id)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+
+                    $finalName = $this->availableNodeNameService->generate(
+                        targetParent: $lockedTargetParent,
+                        requestedName: $plannedFile['original_name'],
+                    );
+
+                    return $this->storeUploadedFile->handle(
+                        file: $file,
+                        user: $user,
+                        parent: $lockedTargetParent,
+                        name: $finalName,
+                    );
+                },
+            );
+
+            $this->fileListCache->flushUser($user);
 
             $uploadedBytes += (int) $model->size;
             $uploaded[] = [
@@ -201,11 +219,15 @@ class UploadBatchService
      */
     private function resolvePlannedParent(User $user, int $parentId): File
     {
-        return File::query()
+        $parent = File::query()
             ->whereKey($parentId)
             ->where('created_by', $user->id)
             ->where('is_folder', true)
             ->whereNull('deleted_at')
             ->firstOrFail();
+
+        abort_unless($parent->isAvailableTreeTarget(), 404);
+
+        return $parent;
     }
 }
