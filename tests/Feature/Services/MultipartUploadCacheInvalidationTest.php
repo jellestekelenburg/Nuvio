@@ -84,6 +84,8 @@ class MultipartUploadCacheInvalidationTest extends TestCase
 
         $file->forceFill(['name' => 'changed-in-database.txt'])->save();
 
+        $this->bindS3Service(objectSize: $upload->size);
+
         $result = app(UploadMultipartService::class)->complete(
             user: $user,
             uploadId: $upload->upload_id,
