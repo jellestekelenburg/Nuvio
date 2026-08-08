@@ -92,6 +92,7 @@ function onDeleteConfirm() {
         >
             <DialogHeader>
                 <DialogTitle>Are you sure?</DialogTitle>
+                <p class="text-base mt-1 mb-3 text-current/70">All files and folder will be moved to your trash bin.</p>
             </DialogHeader>
 
             <DialogFooter>

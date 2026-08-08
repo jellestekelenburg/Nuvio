@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { Undo2 } from '@lucide/vue';
+import { LoaderCircle, Undo2 } from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,10 +43,18 @@ function clickOnrestore() {
     showModal.value = true;
 }
 function triggerModal() {
+    if (form.processing) {
+        return;
+    }
+
     showModal.value = !showModal.value;
 }
 
 function onrestoreConfirm() {
+    if (form.processing) {
+        return;
+    }
+
     if (props.restoreAll) {
         form.all = true;
         form.ids = [];
@@ -66,24 +74,43 @@ function onrestoreConfirm() {
 </script>
 
 <template>
-    <button
-        :class="(props.restoreIds?.length ?? 0) > 0 ? 'inline-flex' : 'hidden'"
-        class="h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all outline-none hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 has-[>svg]:px-3 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+    <Button
+        v-if="(props.restoreIds?.length ?? 0) > 0"
+        type="button"
         @click="clickOnrestore"
     >
         <Undo2 />
         Restore
-    </button>
+    </Button>
 
     <Dialog :open="showModal">
-        <DialogContent class="sm:max-w-md">
+        <DialogContent
+            class="sm:max-w-md"
+            :show-close-button="!form.processing"
+        >
             <DialogHeader>
                 <DialogTitle>Are you sure?</DialogTitle>
             </DialogHeader>
 
             <DialogFooter>
-                <Button @click="onrestoreConfirm">Yes, restore</Button>
-                <Button @click="triggerModal" :variant="'secondary'">
+                <Button
+                    type="button"
+                    :disabled="form.processing"
+                    :aria-busy="form.processing"
+                    @click="onrestoreConfirm"
+                >
+                    <LoaderCircle
+                        v-if="form.processing"
+                        class="size-4 animate-spin"
+                    />
+                    {{ form.processing ? 'Restoring...' : 'Yes, restore' }}
+                </Button>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    :disabled="form.processing"
+                    @click="triggerModal"
+                >
                     Close
                 </Button>
             </DialogFooter>

@@ -85,7 +85,7 @@ useEcho<StorageUpdatedEvent>(
         @mouseleave="storageHide"
     >
         <p class="mb-1 text-sm">My cloud storage</p>
-        <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200">
+        <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-zinc-700">
             <div
                 class="h-1"
                 :style="{ width: storage.percentage + '%' }"
