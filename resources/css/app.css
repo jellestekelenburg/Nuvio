@@ -48,6 +48,18 @@
     --color-input: var(--input);
     --color-ring: var(--ring);
 
+    --color-file-toolbar: var(--file-toolbar);
+    --color-file-table-header: var(--file-table-header);
+    --color-file-row: var(--file-row);
+    --color-file-row-hover: var(--file-row-hover);
+    --color-file-row-selected: var(--file-row-selected);
+    --color-file-row-selected-hover: var(--file-row-selected-hover);
+    --color-file-border: var(--file-border);
+    --color-file-foreground: var(--file-foreground);
+    --color-file-header-foreground: var(--file-header-foreground);
+    --color-file-muted-foreground: var(--file-muted-foreground);
+    --color-file-icon: var(--file-icon);
+
     --color-chart-1: var(--chart-1);
     --color-chart-2: var(--chart-2);
     --color-chart-3: var(--chart-3);
@@ -127,6 +139,19 @@
     --sidebar-border: hsl(0 0% 91%);
     --sidebar-ring: hsl(217.2 91.2% 59.8%);
     --sidebar: hsl(0 0% 98%);
+
+    /* Shared file browser palette (/my-files and /trash). */
+    --file-toolbar: hsl(0 0% 100%);
+    --file-table-header: hsl(220 14.3% 95.9%);
+    --file-row: hsl(0 0% 100%);
+    --file-row-hover: hsl(220 14.3% 95.9%);
+    --file-row-selected: hsl(214.3 100% 96.9%);
+    --file-row-selected-hover: hsl(214.3 94.6% 92.7%);
+    --file-border: hsl(220 13% 91%);
+    --file-foreground: hsl(221 39.3% 11%);
+    --file-header-foreground: hsl(215 13.8% 34.1%);
+    --file-muted-foreground: hsl(218 10.6% 64.9%);
+    --file-icon: hsl(220 8.9% 46.1%);
 }
 
 .dark {
@@ -163,6 +188,19 @@
     --sidebar-border: hsl(0 0% 15.9%);
     --sidebar-ring: hsl(217.2 91.2% 59.8%);
     --sidebar: hsl(240 5.9% 10%);
+
+    /* Shared file browser palette (/my-files and /trash). */
+    --file-toolbar: hsl(240 5.9% 10%);
+    --file-table-header: hsl(240 5.9% 10%);
+    --file-row: hsl(240 5.9% 10%);
+    --file-row-hover: hsl(226 57% 21%);
+    --file-row-selected: hsl(240 3.7% 15.9%);
+    --file-row-selected-hover: hsl(240 5.2% 33.9%);
+    --file-border: hsl(0 0% 100% / 20%);
+    --file-foreground: hsl(0 0% 100%);
+    --file-header-foreground: hsl(0 0% 100%);
+    --file-muted-foreground: hsl(218 10.6% 64.9%);
+    --file-icon: hsl(220 8.9% 46.1%);
 }
 
 @layer base {

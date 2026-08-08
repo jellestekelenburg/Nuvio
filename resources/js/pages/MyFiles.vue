@@ -424,7 +424,7 @@ onBeforeUnmount(() => {
 
         <div class="flex h-full min-h-0 flex-col">
             <div
-                class="flex shrink-0 items-center justify-between border-b bg-white px-4 dark:bg-gray-800"
+                class="flex shrink-0 items-center justify-between border-b border-file-border bg-file-toolbar px-4"
             >
                 <BreadCrumbs :ancestors="ancestors"></BreadCrumbs>
                 <div class="inline-flex gap-x-2">
@@ -454,10 +454,10 @@ onBeforeUnmount(() => {
             <CreateNewContextMenu @create-folder="showCreateFolderModal">
                 <div ref="scrollContainer" class="min-h-0 flex-1 overflow-auto">
                     <table class="relative min-w-full">
-                        <thead class="border-b">
+                        <thead class="border-b border-file-border">
                             <tr>
                                 <th
-                                    class="sticky top-0 z-10 w-6 bg-gray-100 py-4 ps-6 text-start text-sm font-medium dark:bg-gray-700"
+                                    class="sticky top-0 z-10 w-6 bg-file-table-header py-4 ps-6 text-start text-sm font-medium"
                                 >
                                     <Checkbox v-model="selectAllState">
                                     </Checkbox>
@@ -465,7 +465,7 @@ onBeforeUnmount(() => {
                                 <th
                                     v-for="(item, code) in table"
                                     :key="code"
-                                    class="z-10 flex-1 bg-gray-100 px-2 py-2.5 text-start text-sm font-medium text-gray-600 dark:bg-gray-500 dark:text-white"
+                                    class="z-10 flex-1 bg-file-table-header px-2 py-2.5 text-start text-sm font-medium text-file-header-foreground"
                                     :class="item.type ? 'cursor-pointer' : ''"
                                     @click="toggleSort(item.type)"
                                 >
@@ -473,7 +473,7 @@ onBeforeUnmount(() => {
                                         class="inline-flex items-center gap-0.5 rounded-xl px-4 py-1.5"
                                         :class="
                                             item.type && sort.by === item.type
-                                                ? 'font-black text-gray-950'
+                                                ? 'font-black text-file-foreground'
                                                 : ''
                                         "
                                     >
@@ -522,38 +522,38 @@ onBeforeUnmount(() => {
                                             $event.shiftKey,
                                         )
                                     "
-                                    class="cursor-pointer transition duration-300 ease-in-out select-none not-last:border-b"
+                                    class="cursor-pointer border-file-border transition duration-300 ease-in-out select-none not-last:border-b"
                                     :class="
                                         isSelected(file)
-                                            ? 'bg-blue-50 hover:bg-blue-100'
-                                            : 'bg-white hover:bg-gray-100 dark:border-b-gray-600 dark:bg-gray-800'
+                                            ? 'bg-file-row-selected hover:bg-file-row-selected-hover'
+                                            : 'bg-file-row hover:bg-file-row-hover'
                                     "
                                 >
                                     <td
-                                        class="w-4 items-center gap-2 py-4 ps-6 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                        class="w-4 items-center gap-2 py-4 ps-6 text-sm font-medium whitespace-nowrap text-file-foreground"
                                     >
                                         <Checkbox
                                             :model-value="isSelected(file)"
                                         />
                                     </td>
                                     <td
-                                        class="inline-flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                        class="inline-flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap text-file-foreground"
                                     >
                                         <FileIcon :file="file"></FileIcon>
                                         {{ file.name }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-file-foreground"
                                     >
                                         {{ file.owner }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-file-foreground"
                                     >
                                         {{ file.updated_at }}
                                     </td>
                                     <td
-                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white"
+                                        class="px-6 py-4 text-sm font-medium whitespace-nowrap text-file-foreground"
                                     >
                                         {{ file.size }}
                                     </td>
@@ -564,7 +564,7 @@ onBeforeUnmount(() => {
 
                     <div
                         v-if="!allFiles.data.length"
-                        class="py-8 text-center text-sm text-gray-400"
+                        class="py-8 text-center text-sm text-file-muted-foreground"
                     >
                         There is no data in this folder.
                     </div>

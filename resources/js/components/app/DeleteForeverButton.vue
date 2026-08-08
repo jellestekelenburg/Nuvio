@@ -33,7 +33,7 @@ const form = useForm<{
     parent_id: null,
 });
 
-function clickOndelete() {
+function clickOnDelete() {
     if (!props.deleteAll && !(props.deleteIds?.length ?? 0)) {
         showErrorNotification(
             'Please select at least one file or folder to delete',
@@ -50,7 +50,7 @@ function triggerModal() {
     showModal.value = !showModal.value;
 }
 
-function ondeleteConfirm() {
+function onDeleteConfirm() {
     if (form.processing) {
         return;
     }
@@ -74,14 +74,16 @@ function ondeleteConfirm() {
 </script>
 
 <template>
-    <button
-        :class="(props.deleteIds?.length ?? 0) > 0 ? 'inline-flex' : 'hidden'"
-        class="h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all outline-none hover:bg-red-600/90 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 has-[>svg]:px-3 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-        @click="clickOndelete"
+    <Button
+        v-if="(props.deleteIds?.length ?? 0) > 0"
+        type="button"
+        variant="destructive"
+        class="bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-destructive dark:hover:bg-destructive/90"
+        @click="clickOnDelete"
     >
         <Trash />
         Delete
-    </button>
+    </Button>
 
     <Dialog :open="showModal">
         <DialogContent
@@ -101,7 +103,7 @@ function ondeleteConfirm() {
                     variant="destructive"
                     :disabled="form.processing"
                     :aria-busy="form.processing"
-                    @click="ondeleteConfirm"
+                    @click="onDeleteConfirm"
                 >
                     <LoaderCircle
                         v-if="form.processing"

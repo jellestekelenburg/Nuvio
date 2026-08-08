@@ -64,9 +64,9 @@ const iconKey = computed(() => {
     return 'file';
 });
 
-const activePaths = computed(() => {
+const activePaths = computed<string>(() => {
     const key = iconKey.value;
-    if (key === 'folder') return [];
+    if (key === 'folder') return '';
     return ICON_PATHS[key] ?? ICON_PATHS.file;
 });
 </script>
@@ -75,7 +75,7 @@ const activePaths = computed(() => {
     <span class="inline-block">
         <svg
             v-if="props.file.is_folder"
-            class="size-6 fill-gray-500"
+            class="size-6 fill-file-icon"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 640 640"
         >
@@ -86,7 +86,7 @@ const activePaths = computed(() => {
 
         <svg
             v-else
-            class="size-6 fill-gray-500"
+            class="size-6 fill-file-icon"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 640 640"
             aria-hidden="true"
